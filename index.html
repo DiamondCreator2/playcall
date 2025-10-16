@@ -18,7 +18,7 @@
         .admin-input {
             @apply border border-gray-300 rounded-md p-1 w-full text-sm focus:ring-blue-500 focus:border-blue-500;
         }
-        /* Styles for the real-time status indicator */
+        /* Styles for the real-time status indicator (Kept for CSS cleanup, though element removed from HTML) */
         .live-dot {
             animation: pulse 2s infinite;
         }
@@ -54,57 +54,87 @@
     <!--
       The Header component (Play Call Live)
       - Fixed to the top
+      - Responsive navigation
+      - Status indicator removed
+      - Navigation links moved to be next to the logo
     -->
     <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
-        <div class="flex items-center max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16">
-            <div class="flex items-center">
-                <!-- Main Title Text -->
-                <span class="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                    Play Call
-                </span>
+        <!-- Main content container -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-auto">
+            
+            <!-- Top Row: Grouped Nav on Left, Mobile Button on Right -->
+            <div class="flex items-center justify-between h-16">
                 
-                <!-- "Live" Red Box Tag -->
-                <span class="
-                    ml-3 
-                    bg-red-600 
-                    text-white 
-                    text-xs 
-                    font-extrabold 
-                    px-2.5 
-                    py-1 
-                    rounded-lg 
-                    uppercase 
-                    tracking-widest 
-                    shadow-lg 
-                    shadow-red-800/50 
-                    self-center 
-                    transform 
-                    scale-95 
-                    hover:scale-100 
-                    transition duration-150
-                    cursor-default
-                ">
-                    Live
-                </span>
+                <!-- 1. LEFT SIDE GROUP: Title/Logo + Desktop Links -->
+                <div class="flex items-center space-x-6">
+                    
+                    <!-- Title/Logo -->
+                    <div class="flex items-center flex-shrink-0">
+                        <!-- Main Title Text -->
+                        <span class="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                            Play Call
+                        </span>
+                        
+                        <!-- "Live" Red Box Tag -->
+                        <span class="
+                            ml-3 
+                            bg-red-600 
+                            text-white 
+                            text-xs 
+                            font-extrabold 
+                            px-2.5 
+                            py-1 
+                            rounded-lg 
+                            uppercase 
+                            tracking-widest 
+                            shadow-lg 
+                            shadow-red-800/50 
+                            self-center 
+                            transform 
+                            scale-95 
+                            hover:scale-100 
+                            transition duration-150
+                            cursor-default
+                        ">
+                            Live
+                        </span>
+                    </div>
+                    
+                    <!-- Desktop Navigation (Hidden on mobile) -->
+                    <!-- Removed ml-4 to integrate it closer to the logo group -->
+                    <nav id="desktop-nav" class="hidden sm:flex space-x-4">
+                        <a href="#" id="dashboard-link" class="text-red-400 hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                            Followed Games
+                        </a>
+                        <a href="#" id="scores-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                            Game Feed
+                        </a>
+                        <a href="#" id="admin-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                            Admin Panel
+                        </a>
+                    </nav>
+
+                </div>
+
+
+                <!-- 2. RIGHT SIDE: Mobile Menu Button -->
+                <div class="flex items-center space-x-4">
+                    
+                    <!-- Mobile Menu Button (Visible on mobile, hidden on sm+) -->
+                    <button id="mobile-menu-button" class="sm:hidden p-2 rounded-md hover:bg-gray-700 transition duration-150">
+                        <!-- Hamburger Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                </div>
             </div>
             
-            <!-- Navigation Links -->
-            <nav class="ml-10 space-x-4 flex-grow">
-                <a href="#" id="dashboard-link" class="text-red-400 hover:text-red-200 transition duration-150 ease-in-out font-semibold">
-                    Followed Games
-                </a>
-                <a href="#" id="scores-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
-                    Game Feed
-                </a>
-                <a href="#" id="admin-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
-                    Admin Panel
-                </a>
-            </nav>
-
-            <!-- Live Status Indicator -->
-            <div id="status-indicator" class="flex items-center text-xs space-x-1 p-1 px-2 rounded-full bg-gray-700">
-                <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
-                <span id="last-update-text">Live (fetching...)</span>
+            <!-- 3. Mobile Menu Content (Vertical Links, hidden by default) -->
+            <div id="mobile-menu" class="hidden pb-4 sm:hidden">
+                <a href="#" id="dashboard-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('dashboard'); return false;">Followed Games</a>
+                <a href="#" id="scores-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('scores'); return false;">Game Feed</a>
+                <a href="#" id="admin-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('admin'); return false;">Admin Panel</a>
             </div>
         </div>
     </header>
@@ -233,7 +263,6 @@
         // Base URLs only, date will be appended for historical data
         const ESPN_ENDPOINTS = {
             'NFL': 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
-            // ADDED COLLEGE FOOTBALL (NCAAF)
             'NCAAF': 'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard',
             'NBA': 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
             'MLB': 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
@@ -394,11 +423,7 @@
                 { daysAgo: 2, label: '2 Days Ago' }  // Day before yesterday (for Final)
             ];
             
-            const updateText = document.getElementById('last-update-text');
-            const dot = document.querySelector('.live-dot');
-            dot.classList.remove('bg-green-400', 'bg-red-500', 'bg-yellow-500');
-            dot.classList.add('bg-yellow-500');
-            updateText.textContent = 'Fetching...';
+            // NOTE: Removed status indicator updates as requested by the user.
 
             for (const dateConfig of datesToFetch) {
                 const apiDate = getApiDate(dateConfig.daysAgo);
@@ -411,7 +436,7 @@
 
                     try {
                         await withExponentialBackoff(async () => {
-                            // Fetch attempt with cache-busting (using a unique ID is safer than a cache-busting URL parameter)
+                            // Fetch attempt 
                             const response = await fetch(url);
                             if (!response.ok) {
                                 throw new Error(`HTTP error! status: ${response.status} for ${league} on ${dateConfig.label}`);
@@ -455,10 +480,7 @@
             renderScores();
             renderAdminPanel();
 
-            // Update status indicator
-            dot.classList.remove('bg-yellow-500');
-            dot.classList.add('bg-green-400');
-            updateText.textContent = `Live (Last: ${new Date().toLocaleTimeString()})`;
+            // NOTE: Removed status indicator updates for the "Live (Last: ...)" text.
         }
 
 
@@ -858,57 +880,77 @@
             document.getElementById('admin-view').classList.add('hidden');
             document.getElementById('detail-view').classList.add('hidden');
 
-            // Reset navigation link highlights
-            document.getElementById('dashboard-link').classList.add('text-white');
-            document.getElementById('scores-link').classList.add('text-white');
-            document.getElementById('admin-link').classList.add('text-white');
-            document.getElementById('dashboard-link').classList.remove('text-red-400');
-            document.getElementById('scores-link').classList.remove('text-red-400');
-            document.getElementById('admin-link').classList.remove('text-red-400');
+            // Array of all link IDs to easily remove/add active state
+            const linkIds = ['dashboard-link', 'scores-link', 'admin-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile'];
+
+            // 1. Reset all link highlights
+            linkIds.forEach(id => {
+                const link = document.getElementById(id);
+                if (link) {
+                    link.classList.remove('text-red-400');
+                    link.classList.add('text-white');
+                    // Ensure the mobile link resets its background to hover color
+                    if (id.endsWith('-mobile')) {
+                        link.classList.remove('bg-gray-700'); 
+                    }
+                }
+            });
 
             // Show the selected view and highlight its link
             if (view === 'dashboard') {
                 document.getElementById('dashboard-view').classList.remove('hidden');
-                document.getElementById('dashboard-link').classList.remove('text-white');
-                document.getElementById('dashboard-link').classList.add('text-red-400');
-                renderFollowedGames();
             } else if (view === 'scores') {
                 document.getElementById('scores-view').classList.remove('hidden');
-                document.getElementById('scores-link').classList.remove('text-white');
-                document.getElementById('scores-link').classList.add('text-red-400');
                 // Set up filters and render
                 populateLeagueFilter(); 
                 renderScores(); // Renders based on current filters and data
             } else if (view === 'admin') {
                 document.getElementById('admin-view').classList.remove('hidden');
-                document.getElementById('admin-link').classList.remove('text-white');
-                document.getElementById('admin-link').classList.add('text-red-400');
                 renderAdminPanel();
             } else if (view === 'detail') { 
                 document.getElementById('detail-view').classList.remove('hidden');
                 // Link highlight remains on the page you came from (scores)
-                document.getElementById('scores-link').classList.remove('text-white');
-                document.getElementById('scores-link').classList.add('text-red-400');
+                view = 'scores'; 
+            }
+
+            // 2. Highlight active links
+            const desktopLink = document.getElementById(`${view}-link`);
+            const mobileLink = document.getElementById(`${view}-link-mobile`);
+
+            if (desktopLink) {
+                desktopLink.classList.remove('text-white');
+                desktopLink.classList.add('text-red-400');
+            }
+            if (mobileLink) {
+                mobileLink.classList.remove('text-white');
+                mobileLink.classList.add('text-red-400', 'bg-gray-700'); // Highlight mobile link with red text and darker background
             }
         }
 
         // --- Event Listeners and Initial Load ---
-        document.getElementById('admin-link').addEventListener('click', (e) => {
-            e.preventDefault();
-            switchView('admin');
+        
+        // Mobile menu toggle listener
+        document.getElementById('mobile-menu-button').addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.toggle('hidden');
         });
 
-        // Listener for Dashboard tab (now Followed Games)
-        document.getElementById('dashboard-link').addEventListener('click', (e) => {
-            e.preventDefault();
-            switchView('dashboard');
-        });
+        // Desktop and Mobile link listeners (using general approach for easier maintenance)
+        const desktopLinks = [
+            { id: 'admin-link', view: 'admin' },
+            { id: 'dashboard-link', view: 'dashboard' },
+            { id: 'scores-link', view: 'scores' }
+        ];
 
-        // Listener for Scores tab (Game Feed)
-        document.getElementById('scores-link').addEventListener('click', (e) => {
-            e.preventDefault();
-            switchView('scores');
+        // Attach listeners to both desktop links
+        desktopLinks.forEach(item => {
+            document.getElementById(item.id).addEventListener('click', (e) => {
+                e.preventDefault();
+                switchView(item.view);
+            });
         });
+        
+        // Since mobile links use inline `onclick` to also close the menu, 
+        // they don't need additional listeners here.
 
         // Listener for Back button on Detail View
         document.getElementById('back-to-scores').addEventListener('click', (e) => {
@@ -916,15 +958,15 @@
             switchView('scores');
         });
 
+
         // Initialize the view and start fetching data when the window loads
         window.onload = function() {
             // Initial data fetch and render
             fetchEspnScores();
             switchView('dashboard'); // Start on the Followed Games dashboard as it is the user's primary view now.
 
-            // Set up interval for automatic score refreshing (e.g., every 15 seconds)
-            // Note: Since we fetch multiple dates, this will take longer, but ensures live data is fresh.
-            setInterval(fetchEspnScores, 30000); // Changed to 30 seconds to allow time for multiple fetches.
+            // Set up interval for automatic score refreshing (e.g., every 30 seconds)
+            setInterval(fetchEspnScores, 30000); 
         };
     </script>
 
