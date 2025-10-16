@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play Call Live</title>
+    <!-- Load Tailwind CSS from CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font import (Inter is the standard default) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            padding-top: 64px; /* Space for fixed header */
+        }
+        /* Custom styles for the Admin table */
+        .admin-input {
+            @apply border border-gray-300 rounded-md p-1 w-full text-sm focus:ring-blue-500 focus:border-blue-500;
+        }
+        /* Styles for the real-time status indicator */
+        .live-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        /* Message Box Overlay */
+        .message-box-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .message-box-content {
+            background-color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!--
+      The Header component (Play Call Live)
+      - Fixed to the top
+    -->
+    <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
+        <div class="flex items-center max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16">
+            <div class="flex items-center">
+                <!-- Main Title Text -->
+                <span class="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                    Play Call
+                </span>
+                
+                <!-- "Live" Red Box Tag -->
+                <span class="
+                    ml-3 
+                    bg-red-600 
+                    text-white 
+                    text-xs 
+                    font-extrabold 
+                    px-2.5 
+                    py-1 
+                    rounded-lg 
+                    uppercase 
+                    tracking-widest 
+                    shadow-lg 
+                    shadow-red-800/50 
+                    self-center 
+                    transform 
+                    scale-95 
+                    hover:scale-100 
+                    transition duration-150
+                    cursor-default
+                ">
+                    Live
+                </span>
+            </div>
+            
+            <!-- Navigation Links -->
+            <nav class="ml-10 space-x-4 flex-grow">
+                <a href="#" id="dashboard-link" class="text-red-400 hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                    Followed Games
+                </a>
+                <a href="#" id="scores-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                    Game Feed
+                </a>
+                <a href="#" id="admin-link" class="text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                    Admin Panel
+                </a>
+            </nav>
+
+            <!-- Live Status Indicator -->
+            <div id="status-indicator" class="flex items-center text-xs space-x-1 p-1 px-2 rounded-full bg-gray-700">
+                <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
+                <span id="last-update-text">Live (fetching...)</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Dashboard View (Followed Games) - Updated to match image layout -->
+        <div id="dashboard-view" class="space-y-12 hidden">
+            
+            <!-- 1. Friend Activity Feed -->
+            <div>
+                <!-- Heading uses font-black -->
+                <h2 class="text-3xl font-black text-gray-800 mb-6">Friend Activity Feed</h2>
+                <div id="friend-activity-list">
+                    <!-- Friend activity will be injected here by JS -->
+                </div>
+            </div>
+
+            <!-- 2. My Followed Games Section -->
+            <div>
+                <h2 class="text-3xl font-bold text-gray-800">My Followed Games</h2>
+                <p class="text-gray-500 mb-6">Your personal feed of monitored games. You can unfollow them here or in the Scores tab.</p>
+                
+                <div id="followed-games-container" class="flex flex-wrap gap-6">
+                    <!-- Followed game cards will be inserted here (New, simpler style) -->
+                    <p class="text-gray-500" id="no-followed-games">You are not following any games yet. Go to the Game Feed to follow some!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scores View (Game Feed) -->
+        <div id="scores-view" class="space-y-6">
+            <h2 class="text-3xl font-bold text-gray-800">Live Game Feed</h2>
+            
+            <!-- Filter Bar -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4 p-4 bg-white rounded-xl shadow-lg">
+                <label for="league-filter" class="font-semibold text-gray-700">League:</label>
+                <select id="league-filter" class="border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <label for="status-filter" class="font-semibold text-gray-700">Status:</label>
+                <select id="status-filter" class="border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500">
+                    <option value="All">All</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Final">Final</option>
+                </select>
+                <!-- NEW SEARCH BAR: Added to the right of the status filter -->
+                <input type="text" id="team-search" placeholder="Search team name..." class="flex-grow border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500 sm:ml-auto">
+            </div>
+
+            <div id="scores-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Game cards will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Admin Panel View -->
+        <div id="admin-view" class="space-y-6 hidden">
+            <h2 class="text-3xl font-bold text-gray-800">Game Management (View Only)</h2>
+            <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg" role="alert">
+                <p class="font-bold">API Data Warning</p>
+                <p>The scores below are now pulled live from ESPN's public endpoints and will refresh automatically. Manual edits to scores in this panel will be immediately overwritten on the next API fetch.</p>
+            </div>
+            
+            <table class="min-w-full divide-y divide-gray-200 bg-white rounded-xl shadow-lg overflow-hidden">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">League</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teams</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score H/A</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-game-list" class="bg-white divide-y divide-gray-200">
+                    <!-- Admin table rows will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Game Detail View (Hidden by default) -->
+        <div id="detail-view" class="space-y-6 hidden">
+            <a href="#" id="back-to-scores" class="text-blue-600 hover:text-blue-800 font-medium flex items-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+                Back to Game Feed
+            </a>
+            <div id="detail-content" class="bg-white p-6 rounded-xl shadow-lg">
+                <!-- Detailed game information will be inserted here -->
+            </div>
+        </div>
+
+    </main>
+    
+    <!-- Custom Message Box Container (Used instead of alert/confirm) -->
+    <div id="message-box-container" class="hidden message-box-overlay">
+        <div class="message-box-content">
+            <h4 id="message-box-title" class="text-xl font-bold text-gray-800 mb-3"></h4>
+            <p id="message-box-body" class="text-gray-600 mb-4"></p>
+            <button id="message-box-ok" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition duration-150">
+                OK
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+        // --- GLOBAL DATA & SETUP ---
+        let gamesData = []; 
+        let followedGames = JSON.parse(localStorage.getItem('followedGames')) || {};
+        let fetchErrorCount = 0;
+        
+        // Mock data for the Friend Activity Feed
+        const mockFriends = [
+            { name: 'Alex M.', status: 'Watching', detail: 'NFL (DAL vs PHI)', color: 'green' },
+            { name: 'Jamie P.', status: 'Offline', detail: '', color: 'gray' },
+            { name: 'Chris K.', status: 'Watching', detail: 'EPL (MAN U vs LIV)', color: 'green' },
+            { name: 'Morgan S.', status: 'Browsing', detail: 'Scores', color: 'blue' },
+        ];
+
+
+        // --- ESPN API ENDPOINT CONFIGURATION ---
+        // Base URLs only, date will be appended for historical data
+        const ESPN_ENDPOINTS = {
+            'NFL': 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+            // ADDED COLLEGE FOOTBALL (NCAAF)
+            'NCAAF': 'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard',
+            'NBA': 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+            'MLB': 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+            'EPL': 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
+        };
+
+        // --- Custom Message Box (Replacing alert/confirm) ---
+
+        /**
+         * Shows a custom modal message box.
+         * @param {string} title - The title of the message box.
+         * @param {string} body - The main body text.
+         */
+        function showMessageBox(title, body) {
+            document.getElementById('message-box-title').textContent = title;
+            document.getElementById('message-box-body').textContent = body;
+            const container = document.getElementById('message-box-container');
+            container.classList.remove('hidden');
+
+            const okButton = document.getElementById('message-box-ok');
+            // Clone the button to remove old listeners and add a fresh one
+            const newOkButton = okButton.cloneNode(true);
+            okButton.parentNode.replaceChild(newOkButton, okButton);
+
+            newOkButton.addEventListener('click', () => {
+                container.classList.add('hidden');
+            });
+        }
+
+        // --- Date Helper Functions ---
+
+        /**
+         * Returns a date string in YYYYMMDD format for ESPN API.
+         * @param {number} daysAgo - Number of days in the past (0 for today, 1 for yesterday, etc.)
+         * @returns {string} The formatted date string.
+         */
+        function getApiDate(daysAgo) {
+            const date = new Date();
+            date.setDate(date.getDate() - daysAgo);
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            return `${year}${month}${day}`;
+        }
+
+
+        // --- API Data Fetching & Transformation ---
+
+        /**
+         * Transforms raw ESPN event data for a single game into the application's gamesData format.
+         * (Same logic as original, ensuring score is always a number)
+         */
+        function transformEspnGame(league, event) {
+            if (!event.competitions || event.competitions.length === 0) return null;
+
+            const competition = event.competitions[0];
+            const competitors = competition.competitors;
+
+            if (!competitors || competitors.length < 2) return null;
+
+            const home = competitors.find(c => c.homeAway === 'home');
+            const away = competitors.find(c => c.homeAway === 'away');
+
+            if (!home || !away) return null;
+
+            // Determine status and time
+            let statusText = event.status.type.detail || event.status.type.shortDetail || 'Scheduled';
+            const statusName = event.status.type.name;
+            let displayTime = '';
+            let gameStatus = 'Scheduled';
+
+            if (statusName === 'STATUS_FINAL' || statusName === 'STATUS_POSTPONED' || statusName === 'STATUS_CANCELLED') {
+                gameStatus = 'Final';
+            } else if (statusName === 'STATUS_IN_PROGRESS' || statusName === 'STATUS_HALFTIME' || statusName === 'STATUS_DELAYED') {
+                gameStatus = 'In Progress';
+            } else {
+                gameStatus = 'Scheduled';
+            }
+
+            // Refine display time based on sport/status
+            if (gameStatus === 'In Progress') {
+                const period = event.status.period || 0;
+                const clock = event.status.displayClock || '0:00';
+                // UPDATED: Include NCAAF here to show Quarter and Clock
+                if (league === 'NFL' || league === 'NCAAF' || league === 'NBA') { 
+                    displayTime = `Q${period} - ${clock}`;
+                } else if (league === 'EPL') {
+                    // Soccer uses minutes
+                    displayTime = `${period}'`;
+                } else if (league === 'MLB') {
+                    displayTime = `Inning ${period}`;
+                }
+            } else if (gameStatus === 'Final') {
+                displayTime = 'Final';
+                // For final games, use the date instead of the time
+                const date = new Date(event.date);
+                displayTime = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                statusText = statusText.includes('Final') ? 'Final' : statusText;
+            } else {
+                // Scheduled
+                const date = new Date(event.date);
+                displayTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                statusText = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+
+            // Use competition.id if available, otherwise fallback to event.id, and prefix with league for uniqueness across days
+            const uniqueId = competition.id || event.id;
+            
+            return {
+                // Ensure a unique ID, especially for historical games
+                id: `${league}-${uniqueId}`, 
+                league: league,
+                status: gameStatus, // Simplified status for filtering
+                time: displayTime,
+                // Prioritize shortDisplayName (e.g., "Cowboys") or displayName (e.g., "Dallas Cowboys") over abbreviation
+                homeTeam: home.team.shortDisplayName || home.team.displayName || home.team.abbreviation || 'Home',
+                homeScore: parseInt(home.score) || 0,
+                // Prioritize shortDisplayName (e.g., "Eagles") or displayName (e.g., "Philadelphia Eagles") over abbreviation
+                awayTeam: away.team.shortDisplayName || away.team.displayName || away.team.abbreviation || 'Away',
+                awayScore: parseInt(away.score) || 0,
+                followers: 0,
+                statusDetail: statusText,
+            };
+        }
+        
+        /**
+         * Handles exponential backoff logic for retries.
+         * @param {Function} fn - The function to retry.
+         * @param {number} maxRetries - Maximum number of retries.
+         * @param {number} delay - Initial delay in milliseconds.
+         */
+        async function withExponentialBackoff(fn, maxRetries = 5, delay = 1000) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await fn();
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        throw error; 
+                    }
+                    // Exponential delay (e.g., 1s, 2s, 4s, 8s...)
+                    const currentDelay = delay * Math.pow(2, i);
+                    await new Promise(resolve => setTimeout(resolve, currentDelay));
+                }
+            }
+        }
+
+        /**
+         * Fetches scores for all configured leagues from the ESPN API endpoints, 
+         * including today, yesterday, and the day before.
+         */
+        async function fetchEspnScores() {
+            let allGames = [];
+            const datesToFetch = [
+                { daysAgo: 0, label: 'Today' },      // Current day (for Live/Scheduled)
+                { daysAgo: 1, label: 'Yesterday' },  // Yesterday (for Final)
+                { daysAgo: 2, label: '2 Days Ago' }  // Day before yesterday (for Final)
+            ];
+            
+            const updateText = document.getElementById('last-update-text');
+            const dot = document.querySelector('.live-dot');
+            dot.classList.remove('bg-green-400', 'bg-red-500', 'bg-yellow-500');
+            dot.classList.add('bg-yellow-500');
+            updateText.textContent = 'Fetching...';
+
+            for (const dateConfig of datesToFetch) {
+                const apiDate = getApiDate(dateConfig.daysAgo);
+                
+                for (const [league, baseUrl] of Object.entries(ESPN_ENDPOINTS)) {
+                    // Append 'dates=' parameter for historical data
+                    const url = dateConfig.daysAgo > 0 
+                        ? `${baseUrl}?dates=${apiDate}`
+                        : baseUrl; // Today's URL is usually just the base
+
+                    try {
+                        await withExponentialBackoff(async () => {
+                            // Fetch attempt with cache-busting (using a unique ID is safer than a cache-busting URL parameter)
+                            const response = await fetch(url);
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status} for ${league} on ${dateConfig.label}`);
+                            }
+                            const data = await response.json();
+
+                            if (data.events && Array.isArray(data.events)) {
+                                const leagueGames = data.events
+                                    .map(event => transformEspnGame(league, event))
+                                    .filter(game => game !== null);
+                                
+                                // Only keep FINAL games from the past
+                                if (dateConfig.daysAgo > 0) {
+                                    const finalGames = leagueGames.filter(g => g.status === 'Final');
+                                    allGames.push(...finalGames);
+                                } else {
+                                    // Today's games (all statuses)
+                                    allGames.push(...leagueGames);
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        console.error(`Error fetching or processing ${league} data for ${dateConfig.label}:`, error);
+                        fetchErrorCount++;
+                        if (fetchErrorCount >= 10) { // Increased tolerance for multiple API calls
+                             showMessageBox("Critical Fetch Error", "Failed to load scores after multiple retries across dates. The API may be unavailable or have changed.");
+                        }
+                    }
+                }
+            }
+            
+            // Filter out duplicates (possible if a game ends right at midnight)
+            const uniqueGames = Array.from(new Map(allGames.map(game => [game.id, game])).values());
+            
+            // Reset error count on success
+            fetchErrorCount = 0;
+            gamesData = uniqueGames;
+
+            // Re-render the relevant views
+            renderFollowedGames();
+            renderScores();
+            renderAdminPanel();
+
+            // Update status indicator
+            dot.classList.remove('bg-yellow-500');
+            dot.classList.add('bg-green-400');
+            updateText.textContent = `Live (Last: ${new Date().toLocaleTimeString()})`;
+        }
+
+
+        // --- UI Rendering Functions ---
+
+        /**
+         * Renders a game card for the Live Game Feed view (scores-view). (Renamed from renderGameCard)
+         */
+        function renderGameCardFeed(game, isFollowed) {
+            
+            // Determine border color based on game status
+            let borderColorClass = '';
+            let statusText = game.status.toUpperCase();
+            let statusColor = '';
+
+            if (game.status === 'In Progress') {
+                borderColorClass = 'border-red-500'; // Live/In Progress -> Red
+                statusText = 'LIVE';
+                statusColor = 'text-green-600';
+            } else if (game.status === 'Final') {
+                borderColorClass = 'border-blue-500'; // Final -> Blue
+                statusColor = 'text-gray-500';
+            } else {
+                borderColorClass = 'border-gray-400'; // Scheduled/Upcoming -> Gray
+                statusColor = 'text-blue-600';
+            }
+
+            const scoreDisplay = game.status === 'Scheduled' 
+                ? `<span class="text-sm font-medium text-gray-500">${game.statusDetail} @ ${game.time}</span>` 
+                : `<span class="text-3xl font-extrabold text-red-600">${game.homeScore}</span>`;
+
+            const followButton = `<button data-game-id="${game.id}" data-action="${isFollowed ? 'unfollow' : 'follow'}" class="follow-btn text-xs font-semibold px-3 py-1 rounded-full ${isFollowed ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition duration-150">
+                    ${isFollowed ? 'Following' : 'Follow'}
+                </button>`;
+
+            const detailLink = `<a href="#" data-game-id="${game.id}" class="detail-link text-blue-600 hover:text-blue-800 text-sm font-medium mt-2 block">View Details & Chat</a>`;
+
+            return `
+                <div class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full">${game.league}</span>
+                        ${followButton}
+                    </div>
+
+                    <div class="space-y-4">
+                        <!-- Away Team -->
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-lg font-bold text-gray-800">${game.awayTeam}</span>
+                            </div>
+                            <span class="text-3xl font-extrabold text-gray-700">${game.awayScore}</span>
+                        </div>
+
+                        <!-- Home Team -->
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-lg font-bold text-gray-800">${game.homeTeam}</span>
+                                
+                            </div>
+                            ${scoreDisplay}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                        <span class="text-sm font-medium ${statusColor}">
+                            ${statusText}
+                            ${game.status !== 'Scheduled' && game.status !== 'Final' ? ' (' + game.time + ')' : ''}
+                            ${game.status === 'Final' ? ' (' + game.time + ')' : ''}
+                        </span>
+                        <div class="text-xs text-gray-500 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.98 5.98 0 0010 16a5.979 5.979 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
+                            </svg>
+                            ${game.followers} Following
+                        </div>
+                    </div>
+                    ${detailLink}
+                </div>
+            `;
+        }
+        
+        /**
+         * Renders a simplified game card specifically for the Followed Games (Dashboard) view.
+         * Matches the style requested in the image.
+         */
+        function renderFollowedGameCardDashboard(game) {
+            const statusText = game.status === 'In Progress' ? 'LIVE' : game.status.toUpperCase();
+            const statusColor = game.status === 'In Progress' ? 'text-red-600' : 'text-gray-700';
+            
+            // Determine which score is higher (winning team gets red text)
+            const awayScoreClass = game.awayScore > game.homeScore ? 'text-red-600' : 'text-gray-900';
+            const homeScoreClass = game.homeScore > game.awayScore ? 'text-red-600' : 'text-gray-900';
+            
+            let descriptionText = game.status === 'Scheduled' ? `${game.statusDetail} @ ${game.time}` : game.statusDetail;
+            if (game.status === 'Final') {
+                descriptionText = `Final (${game.time})`; // Added the date for Final games
+            }
+
+            return `
+                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 flex flex-col justify-between w-full sm:w-80 flex-shrink-0">
+                    <!-- Header: League and Status -->
+                    <div class="flex items-center mb-4">
+                        <span class="text-xs font-extrabold tracking-wider uppercase ${statusColor}">${game.league} - ${statusText}</span>
+                    </div>
+
+                    <!-- Scores and Teams (Bold, Large Text) -->
+                    <div class="text-xl font-extrabold">
+                        <p class="mb-1">
+                            <span class="${game.awayScore > 0 ? awayScoreClass : 'text-gray-900'}">${game.awayTeam} ${game.awayScore}</span> vs. 
+                            <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeTeam} ${game.homeScore}</span>
+                        </p>
+                    </div>
+
+                    <!-- Time and Unfollow -->
+                    <div class="flex justify-between items-end mt-2 pt-2 border-t border-gray-100">
+                        <span class="text-sm font-medium text-gray-500">${descriptionText}</span>
+                        <button data-game-id="${game.id}" data-action="unfollow" class="follow-btn text-xs font-semibold px-3 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100 transition duration-150">
+                            Unfollow
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the mock friend activity feed.
+         */
+        function renderFriendActivityFeed() {
+            const container = document.getElementById('friend-activity-list');
+            
+            const activityListHtml = mockFriends.map(friend => {
+                const dotColor = friend.color === 'green' ? 'bg-green-500' : friend.color === 'blue' ? 'bg-blue-500' : 'bg-gray-400';
+                
+                let detailLink;
+                if (friend.status === 'Watching') {
+                    detailLink = `<span class="text-xs font-semibold text-red-600">${friend.status} ${friend.detail}</span>`;
+                } else if (friend.status === 'Browsing') {
+                    detailLink = `<span class="text-xs font-semibold text-blue-600">${friend.status} ${friend.detail}</span>`;
+                } else {
+                    detailLink = `<span class="text-xs font-semibold text-gray-500">Offline</span>`;
+                }
+
+                return `
+                    <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
+                        <div class="flex items-center space-x-3">
+                            <!-- UPDATED: Changed text-lg to text-base to be 2 sizes bigger than text-xs -->
+                            <span class="w-2 h-2 rounded-full ${dotColor}"></span>
+                            <span class="text-base font-black text-gray-800">${friend.name}</span>
+                        </div>
+                        ${detailLink}
+                    </div>
+                `;
+            }).join('');
+
+            const html = `
+                <div class="bg-white p-6 rounded-xl shadow-xl">
+                    ${activityListHtml}
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+
+        function renderScores() {
+            const container = document.getElementById('scores-container');
+            const filterLeague = document.getElementById('league-filter').value;
+            const filterStatus = document.getElementById('status-filter').value;
+            // NEW: Get the search query and convert to lower case for comparison
+            const searchQuery = document.getElementById('team-search').value.toLowerCase(); 
+
+            let filteredGames = gamesData.filter(game => {
+                const leagueMatch = filterLeague === 'All' || game.league === filterLeague;
+                const statusMatch = filterStatus === 'All' || game.status === filterStatus;
+                
+                // NEW: Team Search Matching Logic
+                const searchMatch = !searchQuery || 
+                                    game.homeTeam.toLowerCase().includes(searchQuery) ||
+                                    game.awayTeam.toLowerCase().includes(searchQuery);
+
+                return leagueMatch && statusMatch && searchMatch;
+            });
+
+            // --- START: Sorting Logic for Status (Live > Scheduled > Final) ---
+            const statusOrder = {
+                'In Progress': 1,
+                'Scheduled': 2, // Upcoming games moved to second priority
+                'Final': 3      // Final games moved to third priority
+            };
+
+            filteredGames.sort((a, b) => {
+                const orderA = statusOrder[a.status] || 99;
+                const orderB = statusOrder[b.status] || 99;
+
+                // 1. Sort by status priority (1=Live, 2=Scheduled, 3=Final)
+                if (orderA !== orderB) {
+                    return orderA - orderB;
+                }
+
+                // 2. Secondary sort: Alphabetically by league as a tiebreaker
+                return a.league.localeCompare(b.league);
+            });
+            // --- END: Sorting Logic for Status ---
+
+
+            container.innerHTML = filteredGames.map(game => {
+                const isFollowed = followedGames[game.id];
+                // Use the complex card for the main feed
+                return renderGameCardFeed(game, isFollowed); 
+            }).join('');
+
+            // Attach event listeners for follow/unfollow buttons
+            document.querySelectorAll('.follow-btn').forEach(button => {
+                button.addEventListener('click', handleFollowToggle);
+            });
+            // Attach event listeners for detail links
+            document.querySelectorAll('.detail-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showGameDetail(e.target.dataset.gameId);
+                });
+            });
+        }
+
+        function renderFollowedGames() {
+            const container = document.getElementById('followed-games-container');
+            const noGamesMessage = document.getElementById('no-followed-games');
+
+            // 1. Render Friend Activity Feed
+            renderFriendActivityFeed(); 
+
+            // 2. Render Followed Games
+            const followedList = gamesData.filter(game => followedGames[game.id]);
+
+            if (followedList.length === 0) {
+                noGamesMessage.classList.remove('hidden');
+                container.innerHTML = '';
+            } else {
+                noGamesMessage.classList.add('hidden');
+                // Use the new dashboard card renderer
+                container.innerHTML = followedList.map(game => renderFollowedGameCardDashboard(game)).join('');
+                
+                // Attach event listeners for unfollow buttons on the dashboard
+                document.querySelectorAll('#followed-games-container .follow-btn').forEach(button => {
+                    button.addEventListener('click', handleFollowToggle);
+                });
+            }
+        }
+
+        function renderAdminPanel() {
+            const tbody = document.getElementById('admin-game-list');
+            tbody.innerHTML = ''; // Clear previous content
+
+            gamesData.forEach(game => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50 transition duration-150';
+
+                // ID
+                row.insertCell().textContent = game.id;
+                // League
+                row.insertCell().textContent = game.league;
+                // Teams
+                row.insertCell().textContent = `${game.awayTeam} vs ${game.homeTeam}`;
+                // Status
+                row.insertCell().textContent = game.status;
+                // Time
+                row.insertCell().textContent = game.time;
+
+                // Score H/A - Now read-only inputs
+                const scoreCell = row.insertCell();
+                scoreCell.className = 'flex space-x-2 p-3';
+                scoreCell.innerHTML = `
+                    <input type="number" class="admin-input bg-gray-100 cursor-not-allowed" value="${game.homeScore}" readonly title="API data is read-only">
+                    <input type="number" class="admin-input bg-gray-100 cursor-not-allowed" value="${game.awayScore}" readonly title="API data is read-only">
+                `;
+
+                // Actions (The save button is now just illustrative/non-functional)
+                const actionCell = row.insertCell();
+                actionCell.innerHTML = `
+                    <button class="bg-gray-500 text-white px-3 py-1 rounded-lg text-sm opacity-50 cursor-not-allowed" disabled>
+                        Save
+                    </button>
+                `;
+            });
+        }
+
+        // --- Filter and UI Helper Functions ---
+
+        function populateLeagueFilter() {
+            const filter = document.getElementById('league-filter');
+            // ESPN_ENDPOINTS keys are now: NFL, NCAAF, NBA, MLB, EPL
+            const uniqueLeagues = ['All', ...new Set(Object.keys(ESPN_ENDPOINTS))];
+            
+            // Only populate if not already populated (or if the list of leagues changes)
+            if (filter.options.length === 0 || filter.options.length - 1 !== uniqueLeagues.length) {
+                filter.innerHTML = uniqueLeagues.map(league => 
+                    `<option value="${league}">${league}</option>`
+                ).join('');
+            }
+
+            // Remove and re-add listeners to prevent duplication
+            filter.removeEventListener('change', renderScores);
+            filter.addEventListener('change', renderScores);
+            document.getElementById('status-filter').removeEventListener('change', renderScores);
+            document.getElementById('status-filter').addEventListener('change', renderScores);
+            
+            // NEW: Add listener for the search input
+            const searchInput = document.getElementById('team-search');
+            if (searchInput) {
+                 searchInput.removeEventListener('input', renderScores);
+                 searchInput.addEventListener('input', renderScores);
+            }
+        }
+
+        function showGameDetail(gameId) {
+            const game = gamesData.find(g => g.id === gameId);
+            if (!game) {
+                showMessageBox("Game Not Found", "The requested game detail could not be loaded.");
+                return;
+            }
+
+            // Switch to detail view
+            switchView('detail');
+
+            const detailContent = document.getElementById('detail-content');
+            detailContent.innerHTML = `
+                <div class="flex flex-col items-center text-center">
+                    <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
+                    <h3 class="text-5xl font-black text-gray-900 mb-8">
+                        ${game.awayTeam} <span class="text-gray-400 font-normal mx-4">@</span> ${game.homeTeam}
+                    </h3>
+                    
+                    <!-- Scoreboard -->
+                    <div class="flex space-x-8 items-center bg-gray-50 p-6 rounded-xl shadow-inner w-full max-w-lg">
+                        <div class="flex-1">
+                            <p class="text-xl font-semibold text-gray-600">${game.awayTeam}</p>
+                            <p class="text-6xl font-extrabold text-gray-900">${game.awayScore}</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-lg font-bold ${game.status === 'In Progress' ? 'text-green-600' : 'text-gray-500'}">
+                                ${game.time}
+                            </p>
+                            <p class="text-xs text-gray-500">${game.statusDetail}</p>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-xl font-semibold text-gray-600">${game.homeTeam}</p>
+                            <p class="text-6xl font-extrabold text-gray-900">${game.homeScore}</p>
+                        </div>
+                    </div>
+                    
+                    <h4 class="text-2xl font-bold mt-8 text-gray-700">Live Play-by-Play & Chat (Mock)</h4>
+                    <p class="text-gray-500 mt-2">
+                        Game data is live! The full play-by-play and chat features would integrate here.
+                    </p>
+                </div>
+            `;
+        }
+
+        function handleFollowToggle(e) {
+            const button = e.target;
+            const gameId = button.dataset.gameId;
+            const action = button.dataset.action;
+
+            if (action === 'follow') {
+                followedGames[gameId] = true;
+                button.textContent = 'Following';
+                button.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+                button.classList.add('bg-red-500', 'text-white', 'hover:bg-red-600');
+                button.dataset.action = 'unfollow';
+            } else if (action === 'unfollow') {
+                delete followedGames[gameId];
+                // Update the button on the Scores view
+                button.textContent = 'Follow';
+                button.classList.remove('bg-red-500', 'text-white', 'hover:bg-red-600');
+                button.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+                button.dataset.action = 'follow';
+            }
+
+            localStorage.setItem('followedGames', JSON.stringify(followedGames));
+            
+            // Re-render the dashboard if it's visible, otherwise only update the button.
+            if (document.getElementById('dashboard-view').classList.contains('hidden') === false) {
+                renderFollowedGames();
+            }
+            // Always re-render scores to update the button state if on that view
+            if (document.getElementById('scores-view').classList.contains('hidden') === false) {
+                 renderScores();
+            }
+        }
+
+        // --- View Switching and Initialization ---
+
+        function switchView(view) {
+            // Hide all main views
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('scores-view').classList.add('hidden');
+            document.getElementById('admin-view').classList.add('hidden');
+            document.getElementById('detail-view').classList.add('hidden');
+
+            // Reset navigation link highlights
+            document.getElementById('dashboard-link').classList.add('text-white');
+            document.getElementById('scores-link').classList.add('text-white');
+            document.getElementById('admin-link').classList.add('text-white');
+            document.getElementById('dashboard-link').classList.remove('text-red-400');
+            document.getElementById('scores-link').classList.remove('text-red-400');
+            document.getElementById('admin-link').classList.remove('text-red-400');
+
+            // Show the selected view and highlight its link
+            if (view === 'dashboard') {
+                document.getElementById('dashboard-view').classList.remove('hidden');
+                document.getElementById('dashboard-link').classList.remove('text-white');
+                document.getElementById('dashboard-link').classList.add('text-red-400');
+                renderFollowedGames();
+            } else if (view === 'scores') {
+                document.getElementById('scores-view').classList.remove('hidden');
+                document.getElementById('scores-link').classList.remove('text-white');
+                document.getElementById('scores-link').classList.add('text-red-400');
+                // Set up filters and render
+                populateLeagueFilter(); 
+                renderScores(); // Renders based on current filters and data
+            } else if (view === 'admin') {
+                document.getElementById('admin-view').classList.remove('hidden');
+                document.getElementById('admin-link').classList.remove('text-white');
+                document.getElementById('admin-link').classList.add('text-red-400');
+                renderAdminPanel();
+            } else if (view === 'detail') { 
+                document.getElementById('detail-view').classList.remove('hidden');
+                // Link highlight remains on the page you came from (scores)
+                document.getElementById('scores-link').classList.remove('text-white');
+                document.getElementById('scores-link').classList.add('text-red-400');
+            }
+        }
+
+        // --- Event Listeners and Initial Load ---
+        document.getElementById('admin-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            switchView('admin');
+        });
+
+        // Listener for Dashboard tab (now Followed Games)
+        document.getElementById('dashboard-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            switchView('dashboard');
+        });
+
+        // Listener for Scores tab (Game Feed)
+        document.getElementById('scores-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            switchView('scores');
+        });
+
+        // Listener for Back button on Detail View
+        document.getElementById('back-to-scores').addEventListener('click', (e) => {
+            e.preventDefault();
+            switchView('scores');
+        });
+
+        // Initialize the view and start fetching data when the window loads
+        window.onload = function() {
+            // Initial data fetch and render
+            fetchEspnScores();
+            switchView('dashboard'); // Start on the Followed Games dashboard as it is the user's primary view now.
+
+            // Set up interval for automatic score refreshing (e.g., every 15 seconds)
+            // Note: Since we fetch multiple dates, this will take longer, but ensures live data is fresh.
+            setInterval(fetchEspnScores, 30000); // Changed to 30 seconds to allow time for multiple fetches.
+        };
+    </script>
+
+</body>
+</html>
