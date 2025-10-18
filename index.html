@@ -557,13 +557,31 @@
                 borderColorClass = 'border-blue-500';
                 statusColor = 'text-gray-500';
             } else {
+                // Scheduled
                 borderColorClass = 'border-gray-400';
                 statusColor = 'text-blue-600';
             }
+            
+            // --- LOGIC: Determine winning score class for red highlight ---
+            let awayScoreClass = 'text-gray-700';
+            let homeScoreClass = 'text-gray-700';
 
-            const scoreDisplay = game.status === 'Scheduled' 
+            if (game.status !== 'Scheduled') {
+                if (game.awayScore > game.homeScore) {
+                    awayScoreClass = 'text-red-600';
+                } else if (game.homeScore > game.awayScore) {
+                    homeScoreClass = 'text-red-600';
+                }
+                // If tied, both remain 'text-gray-700'
+            }
+            // --- END LOGIC ---
+
+            const awayScoreDisplay = `<span class="text-3xl font-extrabold ${awayScoreClass}">${game.awayScore}</span>`;
+
+            const homeScoreDisplay = game.status === 'Scheduled' 
                 ? `<span class="text-sm font-medium text-gray-500">${game.statusDetail} @ ${game.time}</span>` 
-                : `<span class="text-3xl font-extrabold text-red-600">${game.homeScore}</span>`;
+                : `<span class="text-3xl font-extrabold ${homeScoreClass}">${game.homeScore}</span>`;
+
 
             const followButton = `<button data-game-id="${game.id}" data-action="${isFollowed ? 'unfollow' : 'follow'}" class="follow-btn text-xs font-semibold px-3 py-1 rounded-full ${isFollowed ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition duration-150">
                     ${isFollowed ? 'Following' : 'Follow'}
@@ -573,7 +591,6 @@
 
             // --- USE REAL-TIME PUBLIC FOLLOWER COUNT ---
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
-            // The game.followers property is now redundant, but we keep the card template clean
             
             return `
                 <div class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300">
@@ -588,7 +605,7 @@
                             <div class="flex items-center space-x-3">
                                 <span class="text-lg font-bold text-gray-800">${game.awayTeam}</span>
                             </div>
-                            <span class="text-3xl font-extrabold text-gray-700">${game.awayScore}</span>
+                            ${awayScoreDisplay} <!-- Score uses conditional class -->
                         </div>
 
                         <!-- Home Team -->
@@ -597,7 +614,7 @@
                                 <span class="text-lg font-bold text-gray-800">${game.homeTeam}</span>
                                 
                             </div>
-                            ${scoreDisplay}
+                            ${homeScoreDisplay} <!-- Score/Time uses conditional class -->
                         </div>
                     </div>
 
@@ -623,12 +640,36 @@
          * Renders a simplified game card specifically for the Followed Games (Dashboard) view.
          */
         function renderFollowedGameCardDashboard(game) {
-            const statusText = game.status === 'In Progress' ? 'LIVE' : game.status.toUpperCase();
-            const statusColor = game.status === 'In Progress' ? 'text-red-600' : 'text-gray-700';
             
+            // --- NEW LOGIC FOR STATUS COLOR-CODING ---
+            let borderColorClass = 'border-red-500'; // Default to LIVE red
+            let statusTextColor = 'text-red-600'; // Default to LIVE red
+            let statusText = 'LIVE';
+
+            if (game.status === 'Final') {
+                borderColorClass = 'border-blue-500';
+                statusTextColor = 'text-blue-600';
+                statusText = 'FINAL';
+            } else if (game.status === 'Scheduled') {
+                borderColorClass = 'border-gray-400';
+                statusTextColor = 'text-gray-600';
+                statusText = 'UPCOMING'; // Changed Scheduled to Upcoming for better visual cue
+            }
+            
+            const fullStatusText = game.status === 'In Progress' ? `LIVE (${game.time})` : statusText;
+
             // Determine which score is higher (winning team gets red text)
-            const awayScoreClass = game.awayScore > game.homeScore ? 'text-red-600' : 'text-gray-900';
-            const homeScoreClass = game.homeScore > game.awayScore ? 'text-red-600' : 'text-gray-900';
+            let awayScoreClass = 'text-gray-900';
+            let homeScoreClass = 'text-gray-900';
+            
+            if (game.status !== 'Scheduled') {
+                if (game.awayScore > game.homeScore) {
+                    awayScoreClass = 'text-red-600';
+                } else if (game.homeScore > game.awayScore) {
+                    homeScoreClass = 'text-red-600';
+                }
+            }
+            // --- END NEW LOGIC ---
             
             let descriptionText = game.status === 'Scheduled' ? `${game.statusDetail} @ ${game.time}` : game.statusDetail;
             if (game.status === 'Final') {
@@ -639,20 +680,20 @@
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
 
             return `
-                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 flex flex-col justify-between w-full sm:w-80 flex-shrink-0 hover:shadow-xl transition duration-150">
+                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 ${borderColorClass} flex flex-col justify-between w-full sm:w-80 flex-shrink-0 hover:shadow-xl transition duration-150">
                     
                     <!-- Clickable Body for Detail View -->
                     <div class="cursor-pointer dashboard-detail-link hover:bg-gray-50 p-2 -m-2 rounded-lg" data-game-id="${game.id}">
                         <!-- Header: League and Status -->
                         <div class="flex items-center mb-2">
-                            <span class="text-xs font-extrabold tracking-wider uppercase ${statusColor}">${game.league} - ${statusText}</span>
+                            <span class="text-xs font-extrabold tracking-wider uppercase ${statusTextColor}">${game.league} - ${fullStatusText}</span>
                         </div>
 
                         <!-- Scores and Teams (Bold, Large Text) -->
                         <div class="text-xl font-extrabold">
                             <p class="mb-1">
-                                <span class="${game.awayScore > 0 ? awayScoreClass : 'text-gray-900'}">${game.awayTeam} ${game.awayScore}</span> vs. 
-                                <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeScore} ${game.homeTeam}</span>
+                                <span class="${awayScoreClass}">${game.awayTeam} ${game.awayScore}</span> vs. 
+                                <span class="${homeScoreClass}">${game.homeScore} ${game.homeTeam}</span>
                             </p>
                         </div>
 
