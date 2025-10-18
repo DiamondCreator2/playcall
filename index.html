@@ -228,7 +228,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // IMPORT: Added arrayRemove and FieldValue for atomic updates
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -282,9 +283,10 @@
         let userId = null; // Will be set after auth
         let isAuthReady = false; // Flag to indicate auth state is resolved
 
-        // --- GLOBAL DATA & SETUP ---
+        // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
-        let followedGames = {}; 
+        let followedGames = {}; // PRIVATE: User's list of followed games
+        let gameMetadata = {}; // PUBLIC: Real-time follower counts for all games (New)
         let fetchErrorCount = 0;
         
         // Mock data for the Friend Activity Feed
@@ -330,32 +332,34 @@
             });
         }
         
-        // --- Firestore Path Helper Function ---
+        // --- Firestore Path Helper Functions ---
         
         /**
-         * Determines the correct Firestore document reference for followed games
-         * based on whether the app is running in the Canvas environment or externally.
-         * * For external runs (appId === 'default-app-id'), a simpler path is used to
-         * avoid conflicts with external security rules which may not permit the 'artifacts' structure.
-         * For internal runs, the standard Canvas path is used.
+         * Determines the correct Firestore document reference for followed games (PRIVATE).
          */
         function getFollowedGamesDocRef(dbInstance, currentUserId) {
-            if (!dbInstance || !currentUserId) {
-                console.error("Firestore DB or User ID is missing for document reference.");
-                return null;
-            }
+            if (!dbInstance || !currentUserId) return null;
 
             if (appId === 'default-app-id') {
-                // Simpler path for external testing: users/{userId}/followed_games/user_follows
-                console.log(`Using simplified path for external testing: users/${currentUserId}/followed_games/user_follows`);
                 return doc(dbInstance, 'users', currentUserId, 'followed_games', 'user_follows');
             } else {
-                // Standard path for the Canvas environment: artifacts/{appId}/users/{userId}/followed_games/user_follows
-                console.log(`Using standard path for Canvas environment: artifacts/${appId}/users/${currentUserId}/followed_games/user_follows`);
                 return doc(dbInstance, 'artifacts', appId, 'users', currentUserId, 'followed_games', 'user_follows');
             }
         }
+        
+        /**
+         * Determines the correct Firestore document reference for game metadata (PUBLIC).
+         * This uses the public data path.
+         */
+        function getGameMetadataColRef(dbInstance) {
+            if (!dbInstance) return null;
 
+            if (appId === 'default-app-id') {
+                return collection(dbInstance, 'game_metadata');
+            } else {
+                return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_metadata');
+            }
+        }
 
         // --- Date Helper Functions ---
 
@@ -448,7 +452,7 @@
                 homeScore: parseInt(home.score) || 0,
                 awayTeam: away.team.shortDisplayName || away.team.displayName || away.team.abbreviation || 'Away',
                 awayScore: parseInt(away.score) || 0,
-                // The actual follower count is managed via the followedGames state in Firestore
+                // Followers count is now pulled from the gameMetadata object on render
                 followers: 0, 
                 statusDetail: statusText,
             };
@@ -567,6 +571,10 @@
 
             const detailLink = `<a href="#" data-game-id="${game.id}" class="detail-link text-blue-600 hover:text-blue-800 text-sm font-medium mt-2 block">View Details & Chat</a>`;
 
+            // --- USE REAL-TIME PUBLIC FOLLOWER COUNT ---
+            const followerCount = gameMetadata[game.id]?.followerCount || 0;
+            // The game.followers property is now redundant, but we keep the card template clean
+            
             return `
                 <div class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300">
                     <div class="flex justify-between items-start mb-4">
@@ -603,7 +611,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-red-500" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.98 5.98 0 0010 16a5.979 5.979 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
                             </svg>
-                            ${game.followers} Following
+                            ${followerCount} Following
                         </div>
                     </div>
                     ${detailLink}
@@ -627,6 +635,9 @@
                 descriptionText = `Final (${game.time})`; // Added the date for Final games
             }
 
+            // --- USE REAL-TIME PUBLIC FOLLOWER COUNT ---
+            const followerCount = gameMetadata[game.id]?.followerCount || 0;
+
             return `
                 <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 flex flex-col justify-between w-full sm:w-80 flex-shrink-0">
                     <!-- Header: League and Status -->
@@ -638,13 +649,21 @@
                     <div class="text-xl font-extrabold">
                         <p class="mb-1">
                             <span class="${game.awayScore > 0 ? awayScoreClass : 'text-gray-900'}">${game.awayTeam} ${game.awayScore}</span> vs. 
-                            <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeTeam} ${game.homeScore}</span>
+                            <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeScore} ${game.homeTeam}</span>
                         </p>
                     </div>
 
-                    <!-- Time and Unfollow -->
+                    <!-- Time, Follower Count, and Unfollow -->
                     <div class="flex justify-between items-end mt-2 pt-2 border-t border-gray-100">
-                        <span class="text-sm font-medium text-gray-500">${descriptionText}</span>
+                        <div class="flex flex-col">
+                             <span class="text-sm font-medium text-gray-500">${descriptionText}</span>
+                             <div class="text-xs text-gray-500 flex items-center mt-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.98 5.98 0 0010 16a5.979 5.979 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
+                                </svg>
+                                ${followerCount} Following
+                            </div>
+                        </div>
                         <button data-game-id="${game.id}" data-action="unfollow" class="follow-btn text-xs font-semibold px-3 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100 transition duration-150">
                             Unfollow
                         </button>
@@ -895,7 +914,8 @@
         }
         
         /**
-         * Writes to Firestore to update the user's followed games list.
+         * Writes to Firestore to update the user's followed games list (private)
+         * AND updates the public follower count (game metadata).
          */
         async function handleFollowToggle(e) {
             if (!userId) {
@@ -907,32 +927,47 @@
             const gameId = button.dataset.gameId;
             const action = button.dataset.action;
             
-            // Create a copy of the current followedGames state
+            // 1. Prepare for private user document update
+            const userDocRef = getFollowedGamesDocRef(db, userId);
             const newFollowedGames = { ...followedGames };
-            let success = false;
+
+            // 2. Prepare for public follower count update
+            const metadataColRef = getGameMetadataColRef(db);
+            const gameMetadataDocRef = doc(metadataColRef, gameId);
+            
+            const batch = writeBatch(db);
+            let updateSuccess = false;
 
             if (action === 'follow') {
-                newFollowedGames[gameId] = true;
-                success = true;
+                if (!followedGames[gameId]) {
+                    newFollowedGames[gameId] = true;
+                    // Batch: Update user document (private)
+                    // We use set with the full map to overwrite the 'following' field
+                    batch.set(userDocRef, { following: newFollowedGames });
+                    // Batch: Increment public follower count (public)
+                    batch.set(gameMetadataDocRef, { followerCount: increment(1) }, { merge: true });
+                    updateSuccess = true;
+                }
             } else if (action === 'unfollow') {
-                delete newFollowedGames[gameId];
-                success = true;
+                if (followedGames[gameId]) {
+                    delete newFollowedGames[gameId];
+                    // Batch: Update user document (private)
+                    batch.set(userDocRef, { following: newFollowedGames });
+                    // Batch: Decrement public follower count (public)
+                    batch.set(gameMetadataDocRef, { followerCount: increment(-1) }, { merge: true });
+                    updateSuccess = true;
+                }
             }
             
-            if (success) {
+            if (updateSuccess) {
                 try {
-                    // Use the helper to get the correct document reference
-                    const docRef = getFollowedGamesDocRef(db, userId);
-                    
-                    if (docRef) {
-                        // Write the entire updated map to Firestore
-                        await setDoc(docRef, { following: newFollowedGames });
-                        // NOTE: The UI update will be handled by the Firestore onSnapshot listener
-                    }
+                    // Commit both private (user follow list) and public (follower count) changes atomically
+                    await batch.commit();
+                    // NOTE: The UI update is handled automatically by the two onSnapshot listeners
                     
                 } catch (error) {
-                    console.error("Error writing followed games to Firestore: ", error);
-                    showMessageBox("Save Error", `Failed to update follow status in the cloud. Check your Firestore Security Rules. Error: ${error.message}`);
+                    console.error("Error committing batch update for follow toggle: ", error);
+                    showMessageBox("Save Error", `Failed to update follow status and public counter. Error: ${error.message}`);
                 }
             }
         }
@@ -1011,39 +1046,67 @@
                         userId = user.uid;
                         isAuthReady = true;
                         
-                        // 2. Start Firestore Real-Time Listener for Followed Games
-                        const docRef = getFollowedGamesDocRef(db, userId);
+                        // 2. Start Firestore Real-Time Listener for PRIVATE Followed Games
+                        // This listener is crucial and needs to be inside the auth block.
+                        const userDocRef = getFollowedGamesDocRef(db, userId);
 
-                        if (docRef) {
-                            onSnapshot(docRef, (docSnap) => {
+                        if (userDocRef) {
+                            onSnapshot(userDocRef, (docSnap) => {
                                 if (docSnap.exists() && docSnap.data().following) {
-                                    // Update the global followedGames object from Firestore
                                     followedGames = docSnap.data().following;
-                                    console.log("Followed games updated from Firestore:", followedGames);
+                                    console.log("Followed games updated from private Firestore:", followedGames);
                                 } else {
-                                    // If the document doesn't exist, start with an empty list
                                     followedGames = {}; 
-                                    console.log("No followed games found, initialized to empty.");
+                                    console.log("No private followed games found, initialized to empty.");
                                 }
                                 
-                                // Immediately re-render the UI views affected by followedGames change
+                                // Re-render the UI views affected by followedGames change
                                 renderFollowedGames();
                                 if (!document.getElementById('scores-view').classList.contains('hidden')) {
                                     renderScores();
                                 }
-
                             }, (error) => {
-                                console.error("Firestore onSnapshot error:", error);
+                                console.error("Firestore onSnapshot (Private) error:", error);
                                 showMessageBox("Data Sync Error", "Failed to sync followed games data from the server.");
                             });
                         }
+                        
+                        // 3. Start Firestore Real-Time Listener for PUBLIC Game Metadata (Follower Count)
+                        // FIX: Ensure this is called only AFTER authentication is confirmed (user != null).
+                        // This prevents the 'Missing or insufficient permissions' error that happens 
+                        // if the listener starts before request.auth.uid is available.
+                        const metadataColRef = getGameMetadataColRef(db);
+                        onSnapshot(metadataColRef, (snapshot) => {
+                            const newMetadata = {};
+                            snapshot.forEach(doc => {
+                                const data = doc.data();
+                                // Ensure followerCount is at least 0
+                                newMetadata[doc.id] = { followerCount: Math.max(0, data.followerCount || 0) };
+                            });
+                            gameMetadata = newMetadata;
+                            console.log("Game metadata (follower counts) updated from public Firestore:", gameMetadata);
 
-                        // 3. Start fetching ESPN scores after auth is ready
+                            // Re-render the UI views affected by public follower count change
+                            if (!document.getElementById('scores-view').classList.contains('hidden')) {
+                                renderScores();
+                            }
+                            if (!document.getElementById('dashboard-view').classList.contains('hidden')) {
+                                renderFollowedGames();
+                            }
+
+                        }, (error) => {
+                             // This error is the one you were seeing!
+                             console.error("Firestore onSnapshot (Public) error:", error);
+                             showMessageBox("Data Sync Error", "Failed to sync public follower count data from the server. Check security rules and network connection.");
+                        });
+
+
+                        // 4. Start fetching ESPN scores after auth is ready
                         fetchEspnScores();
                         // Set up interval for automatic score refreshing (e.g., every 30 seconds)
                         setInterval(fetchEspnScores, 30000); 
 
-                        // 4. Initialize the main view
+                        // 5. Initialize the main view
                         switchView('dashboard');
 
                     } else {
