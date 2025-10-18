@@ -639,31 +639,37 @@
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
 
             return `
-                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 flex flex-col justify-between w-full sm:w-80 flex-shrink-0">
-                    <!-- Header: League and Status -->
-                    <div class="flex items-center mb-4">
-                        <span class="text-xs font-extrabold tracking-wider uppercase ${statusColor}">${game.league} - ${statusText}</span>
-                    </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 flex flex-col justify-between w-full sm:w-80 flex-shrink-0 hover:shadow-xl transition duration-150">
+                    
+                    <!-- Clickable Body for Detail View -->
+                    <div class="cursor-pointer dashboard-detail-link hover:bg-gray-50 p-2 -m-2 rounded-lg" data-game-id="${game.id}">
+                        <!-- Header: League and Status -->
+                        <div class="flex items-center mb-2">
+                            <span class="text-xs font-extrabold tracking-wider uppercase ${statusColor}">${game.league} - ${statusText}</span>
+                        </div>
 
-                    <!-- Scores and Teams (Bold, Large Text) -->
-                    <div class="text-xl font-extrabold">
-                        <p class="mb-1">
-                            <span class="${game.awayScore > 0 ? awayScoreClass : 'text-gray-900'}">${game.awayTeam} ${game.awayScore}</span> vs. 
-                            <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeScore} ${game.homeTeam}</span>
-                        </p>
-                    </div>
+                        <!-- Scores and Teams (Bold, Large Text) -->
+                        <div class="text-xl font-extrabold">
+                            <p class="mb-1">
+                                <span class="${game.awayScore > 0 ? awayScoreClass : 'text-gray-900'}">${game.awayTeam} ${game.awayScore}</span> vs. 
+                                <span class="${game.homeScore > 0 ? homeScoreClass : 'text-gray-900'}">${game.homeScore} ${game.homeTeam}</span>
+                            </p>
+                        </div>
 
-                    <!-- Time, Follower Count, and Unfollow -->
-                    <div class="flex justify-between items-end mt-2 pt-2 border-t border-gray-100">
-                        <div class="flex flex-col">
-                             <span class="text-sm font-medium text-gray-500">${descriptionText}</span>
-                             <div class="text-xs text-gray-500 flex items-center mt-1">
+                        <!-- Time, Follower Count -->
+                        <div class="flex flex-col mt-2">
+                            <span class="text-sm font-medium text-gray-500">${descriptionText}</span>
+                            <div class="text-xs text-gray-500 flex items-center mt-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-red-500" viewBox="0 0 20 20" fill="currentColor">
                                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.98 5.98 0 0010 16a5.979 5.979 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
                                 </svg>
                                 ${followerCount} Following
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Unfollow Button (Outside clickable detail area) -->
+                    <div class="flex justify-end pt-3 border-t border-gray-100 mt-2">
                         <button data-game-id="${game.id}" data-action="unfollow" class="follow-btn text-xs font-semibold px-3 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100 transition duration-150">
                             Unfollow
                         </button>
@@ -776,6 +782,16 @@
                 });
             });
         }
+        
+        /**
+         * Handler for clicking on the main body of a followed game card to show details.
+         */
+        function handleDashboardDetailClick(e) {
+            // e.currentTarget is the element the listener was attached to (the dashboard-detail-link div)
+            const gameId = e.currentTarget.dataset.gameId;
+            showGameDetail(gameId);
+        }
+
 
         function renderFollowedGames() {
              // Only render if Firestore is ready
@@ -801,6 +817,14 @@
                 document.querySelectorAll('#followed-games-container .follow-btn').forEach(button => {
                     button.removeEventListener('click', handleFollowToggle); // Remove existing
                     button.addEventListener('click', handleFollowToggle); // Add fresh
+                });
+                
+                // Attach event listeners for the clickable detail area on the dashboard (New)
+                document.querySelectorAll('.dashboard-detail-link').forEach(link => {
+                    // Remove existing listeners first
+                    link.removeEventListener('click', handleDashboardDetailClick); 
+                    // Add the new listener
+                    link.addEventListener('click', handleDashboardDetailClick);
                 });
             }
         }
@@ -982,21 +1006,15 @@
             document.getElementById('detail-view').classList.add('hidden');
 
             const linkIds = ['dashboard-link', 'scores-link', 'admin-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile'];
-
-            // 1. Reset all link highlights
-            linkIds.forEach(id => {
-                const link = document.getElementById(id);
-                if (link) {
-                    link.classList.remove('text-red-400');
-                    link.classList.add('text-white');
-                    if (id.endsWith('-mobile')) {
-                        link.classList.remove('bg-gray-700'); 
-                    }
-                }
-            });
-
-            // Show the selected view and highlight its link
-            if (view === 'dashboard') {
+            
+            // Determine the view that should be highlighted in the navigation
+            let highlightedView = view;
+            if (view === 'detail') {
+                 // Detail is not a main nav item, so we don't highlight anything, or we could highlight 'scores' 
+                 // as the general scores/game content area. Let's choose not to highlight for simplicity.
+                 highlightedView = ''; 
+                 document.getElementById('detail-view').classList.remove('hidden');
+            } else if (view === 'dashboard') {
                 document.getElementById('dashboard-view').classList.remove('hidden');
                 renderFollowedGames();
             } else if (view === 'scores') {
@@ -1006,22 +1024,31 @@
             } else if (view === 'admin') {
                 document.getElementById('admin-view').classList.remove('hidden');
                 renderAdminPanel();
-            } else if (view === 'detail') { 
-                document.getElementById('detail-view').classList.remove('hidden');
-                view = 'scores'; // Highlight 'Scores' as the originating page
             }
+
+
+            // 1. Reset all link highlights
+            linkIds.forEach(id => {
+                const link = document.getElementById(id);
+                if (link) {
+                    link.classList.remove('text-red-400', 'bg-gray-700');
+                    link.classList.add('text-white');
+                }
+            });
 
             // 2. Highlight active links
-            const desktopLink = document.getElementById(`${view}-link`);
-            const mobileLink = document.getElementById(`${view}-link-mobile`);
+            if (highlightedView) {
+                const desktopLink = document.getElementById(`${highlightedView}-link`);
+                const mobileLink = document.getElementById(`${highlightedView}-link-mobile`);
 
-            if (desktopLink) {
-                desktopLink.classList.remove('text-white');
-                desktopLink.classList.add('text-red-400');
-            }
-            if (mobileLink) {
-                mobileLink.classList.remove('text-white');
-                mobileLink.classList.add('text-red-400', 'bg-gray-700');
+                if (desktopLink) {
+                    desktopLink.classList.remove('text-white');
+                    desktopLink.classList.add('text-red-400');
+                }
+                if (mobileLink) {
+                    mobileLink.classList.remove('text-white');
+                    mobileLink.classList.add('text-red-400', 'bg-gray-700');
+                }
             }
         }
 
