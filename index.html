@@ -203,34 +203,59 @@
         <div id="admin-view" class="hidden px-4 py-4 sm:px-0">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Admin Panel (Read-Only API Data)</h2>
             
-            <!-- NEW: Broadcast Control Panel -->
+            <!-- NEW: Live Prompt Control Panel -->
             <div class="bg-white p-6 rounded-xl shadow-lg mb-8 border-t-4 border-red-600">
-                <h3 class="text-2xl font-bold text-gray-800 mb-4">Live Game Broadcast</h3>
-                <p class="text-sm text-gray-600 mb-4">Broadcast a real-time play-call message to all users viewing a specific game's detail page.</p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Create New Live Prompt (Yes/No)</h3>
+                <p class="text-sm text-gray-600 mb-4">Create a new real-time Yes/No question for a specific game. Only one prompt can be active per game.</p>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <!-- Game ID Input -->
                     <div class="md:col-span-1">
-                        <label for="broadcast-game-id" class="block text-sm font-medium text-gray-700">Game ID (e.g., NFL-12345)</label>
-                        <input type="text" id="broadcast-game-id" placeholder="NFL-12345" class="admin-input mt-1">
+                        <label for="prompt-game-id" class="block text-sm font-medium text-gray-700">Game ID (e.g., NFL-12345)</label>
+                        <input type="text" id="prompt-game-id" placeholder="NFL-12345" class="admin-input mt-1">
                     </div>
                     
-                    <!-- Message Input -->
+                    <!-- Prompt Input -->
                     <div class="md:col-span-2">
-                        <label for="broadcast-message" class="block text-sm font-medium text-gray-700">Broadcast Message / Play Call</label>
-                        <input type="text" id="broadcast-message" placeholder="TOUCHDOWN! Mahomes to Kelce for 6." class="admin-input mt-1">
+                        <label for="prompt-question" class="block text-sm font-medium text-gray-700">Question (Yes/No Prompt)</label>
+                        <input type="text" id="prompt-question" placeholder="Will the next play be a pass?" class="admin-input mt-1">
                     </div>
                     
-                    <!-- Broadcast Button -->
+                    <!-- Create Prompt Button -->
                     <div class="md:col-span-1">
-                        <button id="broadcast-send-btn" class="w-full bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition duration-150 shadow-md">
-                            Broadcast Live Call
+                        <button id="prompt-send-btn" class="w-full bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition duration-150 shadow-md">
+                            Create Live Prompt
                         </button>
                     </div>
                 </div>
             </div>
             
+            <!-- NEW: Active & Resolved Prompts List -->
+            <div class="bg-white p-6 rounded-xl shadow-lg mt-8">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Active & Resolved Prompts</h3>
+                <p class="text-sm text-gray-600 mb-4">Set the final answer here. Resolving a prompt will expire it for viewers.</p>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Game ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Question</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Answer</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-prompt-list" class="bg-white divide-y divide-gray-200">
+                            <!-- Prompt rows injected here -->
+                        </tbody>
+                    </table>
+                    <p id="no-prompts-message" class="text-center text-gray-500 py-4 hidden">No active or recently resolved prompts found.</p>
+                </div>
+            </div>
+            
             <!-- Existing Game List -->
-            <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+            <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto mt-8">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Live Game Scoreboard (Read-Only)</h3>
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
@@ -256,8 +281,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // IMPORT: Added arrayRemove and FieldValue for atomic updates
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // UPDATED IMPORTS: Added query, where, updateDoc, addDoc, getDocs for prompt system
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -316,7 +341,8 @@
         let followedGames = {}; // PRIVATE: User's list of followed games
         let gameMetadata = {}; // PUBLIC: Real-time follower counts for all games (New)
         let fetchErrorCount = 0;
-        let unsubscribeBroadcast = null; // NEW: Global state for listener cleanup
+        let unsubscribePromptListener = null; // RENAMED: Global state for listener cleanup (used for Detail View prompt)
+        let unsubscribePromptsAdmin = null; // NEW: Global state for Admin Prompts listener
 
         // Mock data for the Friend Activity Feed
         const mockFriends = [
@@ -391,16 +417,15 @@
         }
         
         /**
-         * Determines the correct Firestore document reference for game broadcasts (PUBLIC).
-         * This uses the public data path.
+         * NEW: Determines the correct Firestore collection reference for game prompts (PUBLIC).
          */
-        function getGameBroadcastDocRef(dbInstance, gameId) {
-            if (!dbInstance || !gameId) return null;
+        function getGamePromptsColRef(dbInstance) {
+            if (!dbInstance) return null;
 
             if (appId === 'default-app-id') {
-                return doc(dbInstance, 'game_broadcasts', gameId);
+                return collection(dbInstance, 'game_prompts');
             } else {
-                return doc(dbInstance, 'artifacts', appId, 'public', 'data', 'game_broadcasts', gameId);
+                return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_prompts');
             }
         }
 
@@ -913,10 +938,91 @@
                 });
             }
         }
+        
+        // NEW: Handles the display and real-time updates for prompts in the Admin Panel
+        function renderAdminPrompts() {
+            if (unsubscribePromptsAdmin) {
+                unsubscribePromptsAdmin();
+            }
+
+            const promptsColRef = getGamePromptsColRef(db);
+            // Query for all prompts (no filtering)
+            const q = query(promptsColRef);
+            
+            unsubscribePromptsAdmin = onSnapshot(q, (snapshot) => {
+                const prompts = [];
+                snapshot.forEach(doc => {
+                    prompts.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort in memory by creation date (newest first)
+                prompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                const limitedPrompts = prompts.slice(0, 20); // Limit to last 20 for performance/clarity
+
+                const tbody = document.getElementById('admin-prompt-list');
+                const noPromptsMessage = document.getElementById('no-prompts-message');
+                tbody.innerHTML = ''; // Clear previous content
+
+                if (limitedPrompts.length === 0) {
+                    noPromptsMessage.classList.remove('hidden');
+                } else {
+                    noPromptsMessage.classList.add('hidden');
+                }
+
+                limitedPrompts.forEach(p => {
+                    const row = tbody.insertRow();
+                    row.className = `transition duration-150 ${p.isResolved ? 'bg-green-50' : 'bg-red-50 hover:bg-red-100'}`;
+
+                    // Game ID
+                    row.insertCell().textContent = p.gameId;
+                    
+                    // Question (Truncated)
+                    row.insertCell().textContent = p.question.substring(0, 50) + (p.question.length > 50 ? '...' : '');
+
+                    // Status
+                    const statusCell = row.insertCell();
+                    statusCell.className = `font-bold ${p.isResolved ? 'text-green-700' : 'text-red-700'}`;
+                    statusCell.textContent = p.isResolved ? 'Resolved' : 'Active';
+
+                    // Answer
+                    row.insertCell().textContent = p.isResolved ? p.answer : 'N/A';
+
+                    // Actions
+                    const actionCell = row.insertCell();
+                    if (!p.isResolved) {
+                        actionCell.innerHTML = `
+                            <button data-id="${p.id}" data-answer="Yes" class="resolve-btn bg-green-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-green-600 transition duration-150 mr-2">
+                                Resolve Yes
+                            </button>
+                            <button data-id="${p.id}" data-answer="No" class="resolve-btn bg-red-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-red-600 transition duration-150">
+                                Resolve No
+                            </button>
+                        `;
+                    } else {
+                        actionCell.textContent = 'Actioned';
+                    }
+                });
+
+                // Attach event listeners for resolution buttons
+                document.querySelectorAll('.resolve-btn').forEach(button => {
+                    button.onclick = (e) => {
+                        const id = e.target.dataset.id;
+                        const answer = e.target.dataset.answer;
+                        handleSetAnswer(id, answer);
+                    };
+                });
+            }, (error) => {
+                console.error("Firestore onSnapshot (Admin Prompts) error:", error);
+            });
+        }
+
 
         function renderAdminPanel() {
              // Only render if Firestore is ready
             if (!isAuthReady) return; 
+
+            // NEW: Render the prompt list (Active and Resolved)
+            renderAdminPrompts(); 
 
             const tbody = document.getElementById('admin-game-list');
             tbody.innerHTML = ''; // Clear previous content
@@ -955,43 +1061,81 @@
         }
         
         /**
-         * Handles sending a broadcast message to a specific game's public document.
+         * NEW: Handles creating a new prompt and checking for active prompts.
          */
-        async function handleBroadcast() {
+        async function handleNewPrompt() {
             if (!isAuthReady) {
                 showMessageBox("Error", "Authentication not ready.");
                 return;
             }
 
-            // NOTE: For a production app, you would add a check here (e.g., if(userId !== 'admin_uid'))
-            // to ensure only authorized users can broadcast.
+            const gameId = document.getElementById('prompt-game-id').value.trim();
+            const question = document.getElementById('prompt-question').value.trim();
 
-            const gameId = document.getElementById('broadcast-game-id').value.trim();
-            const message = document.getElementById('broadcast-message').value.trim();
-
-            if (!gameId || !message) {
-                showMessageBox("Input Required", "Please enter both a valid Game ID and a Broadcast Message.");
+            if (!gameId || !question) {
+                showMessageBox("Input Required", "Please enter both a valid Game ID and a Question.");
                 return;
             }
 
-            const broadcastDocRef = getGameBroadcastDocRef(db, gameId);
-            const timestamp = new Date().toISOString();
+            const promptsColRef = getGamePromptsColRef(db);
 
+            // 1. Check for an existing active prompt for this game.
+            const activeQuery = query(promptsColRef, where('gameId', '==', gameId), where('isResolved', '==', false));
+            
             try {
-                await setDoc(broadcastDocRef, {
-                    gameId: gameId,
-                    message: message,
-                    timestamp: timestamp,
-                    userId: userId // Broadcasted by this user's UID
-                }, { merge: true });
+                const activeSnapshot = await getDocs(activeQuery);
+                
+                if (!activeSnapshot.empty) {
+                    showMessageBox("Existing Prompt Active", `There is already an active prompt for game ${gameId}. Please resolve the current one before creating a new one.`);
+                    return;
+                }
 
-                // Clear the message input after successful broadcast
-                document.getElementById('broadcast-message').value = '';
-                showMessageBox("Broadcast Sent", `Live call successfully broadcasted to game ${gameId}!`);
+                // 2. Create the new prompt
+                const newPrompt = {
+                    gameId: gameId,
+                    question: question,
+                    createdAt: new Date().toISOString(),
+                    userId: userId,
+                    isResolved: false,
+                    answer: null,
+                    resolvedAt: null
+                };
+
+                await addDoc(promptsColRef, newPrompt);
+
+                // Clear the message input after successful creation
+                document.getElementById('prompt-question').value = '';
+                showMessageBox("Prompt Created", `New live question successfully created for game ${gameId}!`);
 
             } catch (error) {
-                console.error("Error sending broadcast:", error);
-                showMessageBox("Broadcast Error", `Failed to send broadcast. Error: ${error.message}`);
+                console.error("Error sending new prompt:", error);
+                showMessageBox("Prompt Error", `Failed to create prompt. Error: ${error.message}`);
+            }
+        }
+        
+        /**
+         * NEW: Handles setting the answer and resolving the prompt.
+         */
+        async function handleSetAnswer(promptId, answer) {
+            if (!isAuthReady) {
+                showMessageBox("Error", "Authentication not ready.");
+                return;
+            }
+            
+            const promptDocRef = doc(getGamePromptsColRef(db), promptId);
+
+            try {
+                await updateDoc(promptDocRef, {
+                    isResolved: true,
+                    answer: answer,
+                    resolvedAt: new Date().toISOString()
+                });
+
+                showMessageBox("Prompt Resolved", `The prompt has been resolved with answer: ${answer}. It will now expire for viewers and display the result.`);
+
+            } catch (error) {
+                console.error(`Error resolving prompt ${promptId}:`, error);
+                showMessageBox("Resolution Error", `Failed to resolve prompt. Error: ${error.message}`);
             }
         }
 
@@ -1032,7 +1176,7 @@
 
             const detailContent = document.getElementById('detail-content');
             
-            // 1. Inject the structure into the DOM
+            // 1. Inject the structure into the DOM (Updated for prompts)
             detailContent.innerHTML = `
                 <div class="flex flex-col items-center text-center">
                     <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
@@ -1058,11 +1202,18 @@
                         </div>
                     </div>
                     
-                    <!-- NEW LIVE BROADCAST MESSAGE CONTAINER -->
-                    <div id="live-broadcast-message" class="mt-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg shadow-inner w-full max-w-lg hidden">
-                        <p class="text-sm font-semibold text-red-700 mb-1">LIVE PLAY CALL:</p>
-                        <p id="broadcast-text" class="text-xl font-black text-gray-900">Waiting for live broadcast...</p>
-                        <p id="broadcast-user" class="text-xs text-gray-500 mt-2"></p>
+                    <!-- NEW LIVE PROMPT CONTAINER -->
+                    <div id="live-prompt-container" class="mt-6 p-4 border-l-4 rounded-lg shadow-inner w-full max-w-lg transition duration-300 bg-gray-50 border-gray-300">
+                        <p class="text-sm font-semibold mb-1 text-gray-700">LIVE YES/NO PROMPT:</p>
+                        <p id="prompt-text" class="text-xl font-black text-gray-900">Waiting for a live question...</p>
+                        
+                        <!-- Resolution/Answer Box -->
+                        <div id="prompt-answer-box" class="mt-4 pt-3 border-t border-gray-200 hidden">
+                            <p class="text-sm font-medium text-gray-500 mb-2">RESULT:</p>
+                            <!-- Answer will be styled here -->
+                            <span id="prompt-answer-result" class="text-3xl font-extrabold px-4 py-2 rounded-full"></span>
+                            <p id="prompt-resolved-user" class="text-xs text-gray-400 mt-2"></p>
+                        </div>
                     </div>
 
                     <h4 class="text-2xl font-bold mt-8 text-gray-700">Live Play-by-Play & Chat (Mock)</h4>
@@ -1073,35 +1224,69 @@
             `;
             
             // 2. Clean up old listener if one exists
-            if (unsubscribeBroadcast) {
-                unsubscribeBroadcast();
-                unsubscribeBroadcast = null;
+            if (unsubscribePromptListener) {
+                unsubscribePromptListener();
+                unsubscribePromptListener = null;
             }
 
-            // 3. Set up new broadcast listener AFTER DOM elements exist
-            const broadcastDocRef = getGameBroadcastDocRef(db, gameId);
-            
-            unsubscribeBroadcast = onSnapshot(broadcastDocRef, (docSnap) => {
-                const broadcastContainer = document.getElementById('live-broadcast-message');
-                const broadcastText = document.getElementById('broadcast-text');
-                const broadcastUser = document.getElementById('broadcast-user');
+            // 3. Set up new prompt listener
+            const promptsColRef = getGamePromptsColRef(db);
+            const q = query(promptsColRef, where('gameId', '==', gameId));
+
+            unsubscribePromptListener = onSnapshot(q, (snapshot) => {
+                const allPrompts = [];
+                snapshot.forEach(doc => {
+                    allPrompts.push({ id: doc.id, ...doc.data() });
+                });
                 
-                if (docSnap.exists() && docSnap.data().message) {
-                    const data = docSnap.data();
-                    broadcastText.textContent = data.message;
+                // Sort by creation date (newest first)
+                allPrompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                const activePrompt = allPrompts.find(p => p.isResolved === false);
+                const latestResolvedPrompt = allPrompts.find(p => p.isResolved === true);
+                
+                let promptToDisplay = activePrompt || latestResolvedPrompt;
+
+                const container = document.getElementById('live-prompt-container');
+                const textEl = document.getElementById('prompt-text');
+                const answerBox = document.getElementById('prompt-answer-box');
+                const answerResult = document.getElementById('prompt-answer-result');
+                const resolvedUser = document.getElementById('prompt-resolved-user');
+
+                // Reset display
+                answerBox.classList.add('hidden');
+                container.classList.remove('bg-red-50', 'border-red-500', 'bg-green-50', 'border-green-500');
+                container.classList.add('bg-gray-50', 'border-gray-300'); // Default waiting state
+
+                if (promptToDisplay) {
+                    textEl.textContent = promptToDisplay.question;
                     
-                    const time = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    broadcastUser.textContent = `Broadcasted by Admin User (${data.userId}) at ${time}`;
-                    
-                    broadcastContainer.classList.remove('hidden');
+                    if (promptToDisplay.isResolved) {
+                        // Display the resolved answer
+                        answerBox.classList.remove('hidden');
+                        answerResult.textContent = promptToDisplay.answer;
+                        
+                        const answerColor = promptToDisplay.answer === 'Yes' ? 'bg-green-600' : 'bg-red-600';
+                        answerResult.className = `text-white ${answerColor} text-3xl font-extrabold px-4 py-2 rounded-lg inline-block shadow-md`;
+
+                        const time = new Date(promptToDisplay.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        resolvedUser.textContent = `Resolved to ${promptToDisplay.answer} by Admin at ${time}`;
+
+                        // Set container style for resolved state
+                        container.classList.remove('bg-gray-50', 'border-gray-300');
+                        container.classList.add('bg-green-50', 'border-green-500');
+
+                    } else {
+                        // Display active prompt (waiting for resolution)
+                        container.classList.remove('bg-gray-50', 'border-gray-300');
+                        container.classList.add('bg-red-50', 'border-red-500');
+                    }
+
                 } else {
-                    // Hide the message box if no broadcast exists
-                    broadcastText.textContent = "Waiting for live broadcast...";
-                    broadcastUser.textContent = "";
-                    broadcastContainer.classList.add('hidden');
+                    textEl.textContent = "Waiting for a live question...";
                 }
             }, (error) => {
-                console.error("Broadcast listener error:", error);
+                console.error("Prompt listener error:", error);
             });
         }
         
@@ -1173,12 +1358,20 @@
             document.getElementById('admin-view').classList.add('hidden');
             document.getElementById('detail-view').classList.add('hidden');
             
-            // Cleanup: If moving away from the detail view, stop the broadcast listener
-            if (view !== 'detail' && unsubscribeBroadcast) {
-                unsubscribeBroadcast();
-                unsubscribeBroadcast = null;
-                console.log("Stopped game broadcast listener.");
+            // Cleanup: Stop the prompt listener if moving away from the detail view
+            if (unsubscribePromptListener) {
+                unsubscribePromptListener();
+                unsubscribePromptListener = null;
+                console.log("Stopped game prompt listener.");
             }
+            
+            // Cleanup: Stop the admin prompt listener if moving away from the admin view
+            if (view !== 'admin' && unsubscribePromptsAdmin) {
+                 unsubscribePromptsAdmin();
+                 unsubscribePromptsAdmin = null;
+                 console.log("Stopped admin prompt listener.");
+            }
+
 
             const linkIds = ['dashboard-link', 'scores-link', 'admin-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile'];
             
@@ -1198,6 +1391,7 @@
                 renderScores();
             } else if (view === 'admin') {
                 document.getElementById('admin-view').classList.remove('hidden');
+                // The renderAdminPanel function will now call renderAdminPrompts()
                 renderAdminPanel();
             }
 
@@ -1308,8 +1502,8 @@
                         // 5. Initialize the main view
                         switchView('dashboard');
                         
-                        // 6. Set up Admin Panel listener
-                        document.getElementById('broadcast-send-btn').addEventListener('click', handleBroadcast);
+                        // 6. Set up Admin Panel listener for new prompt creation
+                        document.getElementById('prompt-send-btn').addEventListener('click', handleNewPrompt);
 
 
                     } else {
