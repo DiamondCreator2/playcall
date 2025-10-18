@@ -128,9 +128,9 @@
             <!-- 3. Mobile Menu Content (Vertical Links, hidden by default) -->
             <!-- FIX: Added bg-gray-900 and z-50 to ensure menu is on top and has a solid background -->
             <div id="mobile-menu" class="hidden pb-4 sm:hidden bg-gray-900 z-50">
-                <a href="#" id="dashboard-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('dashboard'); return false;">Dashboard</a>
-                <a href="#" id="scores-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('scores'); return false;">Live Scores</a>
-                <a href="#" id="admin-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('admin'); return false;">Admin Panel</a>
+                <a href="#" id="dashboard-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150">Dashboard</a>
+    		<a href="#" id="scores-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Live Scores</a>
+    		<a href="#" id="admin-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Admin Panel</a>
             </div>
         </div>
     </header>
@@ -1077,18 +1077,31 @@
             document.getElementById('mobile-menu').classList.toggle('hidden');
         });
 
-        // Desktop link listeners
-        const desktopLinks = [
+        // Combined logic for all navigation links (Desktop and Mobile)
+        const allNavLinks = [
             { id: 'admin-link', view: 'admin' },
             { id: 'dashboard-link', view: 'dashboard' },
-            { id: 'scores-link', view: 'scores' }
+            { id: 'scores-link', view: 'scores' },
+            // ADDED: Mobile links for unified handling
+            { id: 'admin-link-mobile', view: 'admin' },
+            { id: 'dashboard-link-mobile', view: 'dashboard' },
+            { id: 'scores-link-mobile', view: 'scores' }
         ];
 
-        desktopLinks.forEach(item => {
-            document.getElementById(item.id).addEventListener('click', (e) => {
-                e.preventDefault();
-                switchView(item.view);
-            });
+        allNavLinks.forEach(item => {
+            const link = document.getElementById(item.id);
+            if (link) {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    
+                    // Logic to hide the mobile menu if a mobile link was clicked
+                    if (item.id.includes('-mobile')) {
+                        document.getElementById('mobile-menu').classList.add('hidden');
+                    }
+                    
+                    switchView(item.view);
+                });
+            }
         });
         
         // Listener for Back button on Detail View
@@ -1102,4 +1115,3 @@
     </script>
 </body>
 </html>
-
