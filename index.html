@@ -202,6 +202,34 @@
         <!-- Admin Panel View -->
         <div id="admin-view" class="hidden px-4 py-4 sm:px-0">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Admin Panel (Read-Only API Data)</h2>
+            
+            <!-- NEW: Broadcast Control Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-lg mb-8 border-t-4 border-red-600">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Live Game Broadcast</h3>
+                <p class="text-sm text-gray-600 mb-4">Broadcast a real-time play-call message to all users viewing a specific game's detail page.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                    <!-- Game ID Input -->
+                    <div class="md:col-span-1">
+                        <label for="broadcast-game-id" class="block text-sm font-medium text-gray-700">Game ID (e.g., NFL-12345)</label>
+                        <input type="text" id="broadcast-game-id" placeholder="NFL-12345" class="admin-input mt-1">
+                    </div>
+                    
+                    <!-- Message Input -->
+                    <div class="md:col-span-2">
+                        <label for="broadcast-message" class="block text-sm font-medium text-gray-700">Broadcast Message / Play Call</label>
+                        <input type="text" id="broadcast-message" placeholder="TOUCHDOWN! Mahomes to Kelce for 6." class="admin-input mt-1">
+                    </div>
+                    
+                    <!-- Broadcast Button -->
+                    <div class="md:col-span-1">
+                        <button id="broadcast-send-btn" class="w-full bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition duration-150 shadow-md">
+                            Broadcast Live Call
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Existing Game List -->
             <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -288,7 +316,8 @@
         let followedGames = {}; // PRIVATE: User's list of followed games
         let gameMetadata = {}; // PUBLIC: Real-time follower counts for all games (New)
         let fetchErrorCount = 0;
-        
+        let unsubscribeBroadcast = null; // NEW: Global state for listener cleanup
+
         // Mock data for the Friend Activity Feed
         const mockFriends = [
             { name: 'Alex M.', status: 'Watching', detail: 'NFL (DAL vs PHI)', color: 'green' },
@@ -360,6 +389,21 @@
                 return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_metadata');
             }
         }
+        
+        /**
+         * Determines the correct Firestore document reference for game broadcasts (PUBLIC).
+         * This uses the public data path.
+         */
+        function getGameBroadcastDocRef(dbInstance, gameId) {
+            if (!dbInstance || !gameId) return null;
+
+            if (appId === 'default-app-id') {
+                return doc(dbInstance, 'game_broadcasts', gameId);
+            } else {
+                return doc(dbInstance, 'artifacts', appId, 'public', 'data', 'game_broadcasts', gameId);
+            }
+        }
+
 
         // --- Date Helper Functions ---
 
@@ -909,6 +953,48 @@
                 `;
             });
         }
+        
+        /**
+         * Handles sending a broadcast message to a specific game's public document.
+         */
+        async function handleBroadcast() {
+            if (!isAuthReady) {
+                showMessageBox("Error", "Authentication not ready.");
+                return;
+            }
+
+            // NOTE: For a production app, you would add a check here (e.g., if(userId !== 'admin_uid'))
+            // to ensure only authorized users can broadcast.
+
+            const gameId = document.getElementById('broadcast-game-id').value.trim();
+            const message = document.getElementById('broadcast-message').value.trim();
+
+            if (!gameId || !message) {
+                showMessageBox("Input Required", "Please enter both a valid Game ID and a Broadcast Message.");
+                return;
+            }
+
+            const broadcastDocRef = getGameBroadcastDocRef(db, gameId);
+            const timestamp = new Date().toISOString();
+
+            try {
+                await setDoc(broadcastDocRef, {
+                    gameId: gameId,
+                    message: message,
+                    timestamp: timestamp,
+                    userId: userId // Broadcasted by this user's UID
+                }, { merge: true });
+
+                // Clear the message input after successful broadcast
+                document.getElementById('broadcast-message').value = '';
+                showMessageBox("Broadcast Sent", `Live call successfully broadcasted to game ${gameId}!`);
+
+            } catch (error) {
+                console.error("Error sending broadcast:", error);
+                showMessageBox("Broadcast Error", `Failed to send broadcast. Error: ${error.message}`);
+            }
+        }
+
 
         // --- Filter and UI Helper Functions ---
 
@@ -945,6 +1031,8 @@
             switchView('detail');
 
             const detailContent = document.getElementById('detail-content');
+            
+            // 1. Inject the structure into the DOM
             detailContent.innerHTML = `
                 <div class="flex flex-col items-center text-center">
                     <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
@@ -970,12 +1058,51 @@
                         </div>
                     </div>
                     
+                    <!-- NEW LIVE BROADCAST MESSAGE CONTAINER -->
+                    <div id="live-broadcast-message" class="mt-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg shadow-inner w-full max-w-lg hidden">
+                        <p class="text-sm font-semibold text-red-700 mb-1">LIVE PLAY CALL:</p>
+                        <p id="broadcast-text" class="text-xl font-black text-gray-900">Waiting for live broadcast...</p>
+                        <p id="broadcast-user" class="text-xs text-gray-500 mt-2"></p>
+                    </div>
+
                     <h4 class="text-2xl font-bold mt-8 text-gray-700">Live Play-by-Play & Chat (Mock)</h4>
                     <p class="text-gray-500 mt-2">
                         Game data is live! The full play-by-play and chat features would integrate here.
                     </p>
                 </div>
             `;
+            
+            // 2. Clean up old listener if one exists
+            if (unsubscribeBroadcast) {
+                unsubscribeBroadcast();
+                unsubscribeBroadcast = null;
+            }
+
+            // 3. Set up new broadcast listener AFTER DOM elements exist
+            const broadcastDocRef = getGameBroadcastDocRef(db, gameId);
+            
+            unsubscribeBroadcast = onSnapshot(broadcastDocRef, (docSnap) => {
+                const broadcastContainer = document.getElementById('live-broadcast-message');
+                const broadcastText = document.getElementById('broadcast-text');
+                const broadcastUser = document.getElementById('broadcast-user');
+                
+                if (docSnap.exists() && docSnap.data().message) {
+                    const data = docSnap.data();
+                    broadcastText.textContent = data.message;
+                    
+                    const time = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    broadcastUser.textContent = `Broadcasted by Admin User (${data.userId}) at ${time}`;
+                    
+                    broadcastContainer.classList.remove('hidden');
+                } else {
+                    // Hide the message box if no broadcast exists
+                    broadcastText.textContent = "Waiting for live broadcast...";
+                    broadcastUser.textContent = "";
+                    broadcastContainer.classList.add('hidden');
+                }
+            }, (error) => {
+                console.error("Broadcast listener error:", error);
+            });
         }
         
         /**
@@ -1045,6 +1172,13 @@
             document.getElementById('scores-view').classList.add('hidden');
             document.getElementById('admin-view').classList.add('hidden');
             document.getElementById('detail-view').classList.add('hidden');
+            
+            // Cleanup: If moving away from the detail view, stop the broadcast listener
+            if (view !== 'detail' && unsubscribeBroadcast) {
+                unsubscribeBroadcast();
+                unsubscribeBroadcast = null;
+                console.log("Stopped game broadcast listener.");
+            }
 
             const linkIds = ['dashboard-link', 'scores-link', 'admin-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile'];
             
@@ -1140,9 +1274,6 @@
                         }
                         
                         // 3. Start Firestore Real-Time Listener for PUBLIC Game Metadata (Follower Count)
-                        // FIX: Ensure this is called only AFTER authentication is confirmed (user != null).
-                        // This prevents the 'Missing or insufficient permissions' error that happens 
-                        // if the listener starts before request.auth.uid is available.
                         const metadataColRef = getGameMetadataColRef(db);
                         onSnapshot(metadataColRef, (snapshot) => {
                             const newMetadata = {};
@@ -1176,6 +1307,10 @@
 
                         // 5. Initialize the main view
                         switchView('dashboard');
+                        
+                        // 6. Set up Admin Panel listener
+                        document.getElementById('broadcast-send-btn').addEventListener('click', handleBroadcast);
+
 
                     } else {
                         // Attempt sign-in using the provided custom token, or anonymously
