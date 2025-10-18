@@ -13,22 +13,10 @@
             background-color: #f7f7f7;
             padding-top: 64px; /* Space for fixed header */
         }
-        /* FIXED: Changed invalid tag selector to a class selector */
-        .admin-input {
+        admin-input {
             @apply border border-gray-300 rounded-md p-1 w-full text-sm focus:ring-blue-500 focus:border-blue-500;
         }
-        /* Styles for the real-time status indicator (Kept for CSS cleanup, though element removed from HTML) */
-        .live-dot {
-            animation: pulse 2s infinite;
-        }
-         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-        .nav-link {
-            transition: color 0.15s, background-color 0.15s;
-        }
-       /* Message Box Overlay */
+        /* Message Box Overlay */
         .message-box-overlay {
             position: fixed;
             top: 0;
@@ -67,21 +55,10 @@
         </div>
     </div>
     
-    <!-- User Info and Status Bar -->
-    <div class="hidden bg-gray-800 text-white p-3 text-sm flex justify-between items-center">
-        <div class="flex items-center space-x-2">
-            <svg class="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-            <span id="auth-status">Connecting...</span>
-        </div>
-        <div class="text-xs text-gray-400">
-            User ID: <span id="user-id-display" class="font-mono">Loading...</span>
-        </div>
-    </div>
-<header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
-        <!-- Main content container -->
+    <!-- Header: Navigation and Logo -->
+    <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-auto">
             
-            <!-- Top Row: Grouped Nav on Left, Mobile Button on Right -->
             <div class="flex items-center justify-between h-16">
                 
                 <!-- 1. LEFT SIDE GROUP: Title/Logo + Desktop Links -->
@@ -89,12 +66,10 @@
                     
                     <!-- Title/Logo -->
                     <div class="flex items-center flex-shrink-0">
-                        <!-- Main Title Text -->
                         <span class="text-3xl sm:text-4xl font-black tracking-tight text-white">
                             Play Call
                         </span>
                         
-                        <!-- "Live" Red Box Tag -->
                         <span class="
                             ml-3 
                             bg-red-600 
@@ -119,8 +94,7 @@
                         </span>
                     </div>
                     
-                    <!-- Desktop Navigation (Hidden on mobile) -->
-                    <!-- Removed ml-4 to integrate it closer to the logo group -->
+                    <!-- Desktop Navigation -->
                     <nav id="desktop-nav" class="hidden sm:flex space-x-4">
                         <a href="#" id="dashboard-link" class="text-red-400 hover:text-red-200 transition duration-150 ease-in-out font-semibold">
                             Dashboard
@@ -139,9 +113,8 @@
                 <!-- 2. RIGHT SIDE: Mobile Menu Button -->
                 <div class="flex items-center space-x-4">
                     
-                    <!-- Mobile Menu Button (Visible on mobile, hidden on sm+) -->
+                    <!-- Mobile Menu Button -->
                     <button id="mobile-menu-button" class="sm:hidden p-2 rounded-md hover:bg-gray-700 transition duration-150">
-                        <!-- Hamburger Icon -->
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
@@ -149,12 +122,11 @@
                 </div>
             </div>
             
-            <!-- 3. Mobile Menu Content (Vertical Links, hidden by default) -->
-            <!-- FIX: Added bg-gray-900 and z-50 to ensure menu is on top and has a solid background -->
-            <div id="mobile-menu" class="hidden pb-4 sm:hidden bg-gray-900 z-50">
-                <a href="#" id="dashboard-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('dashboard'); return false;">Dashboard</a>
-                <a href="#" id="scores-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('scores'); return false;">Live Scores</a>
-                <a href="#" id="admin-link-mobile" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('admin'); return false;">Admin Panel</a>
+            <!-- 3. Mobile Menu Content -->
+            <div id="mobile-menu" class="hidden pb-4 sm:hidden">
+                <a href="#" id="dashboard-link" class="block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('dashboard'); return false;">Dashboard</a>
+                <a href="#" id="scores-link" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('scores'); return false;">Live Scores</a>
+                <a href="#" id="admin-link" class="block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150" onclick="document.getElementById('mobile-menu').classList.add('hidden'); switchView('admin'); return false;">Admin Panel</a>
             </div>
         </div>
     </header>
@@ -166,20 +138,19 @@
         <!-- Dashboard View (Followed Games) -->
         <div id="dashboard-view" class="px-4 py-4 sm:px-0">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Your Dashboard</h2>
-            <!-- Friend Activity Section -->
+            <!-- Friend Activity Section (Mock) -->
             <div>
                 <h3 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Friend Activity (Mock)</h3>
                 <div id="friend-activity-list">
                     <!-- Friend activity list will be injected here -->
                 </div>
             </div><br><br>
-            <!-- Followed Games Section -->
+            <!-- Followed Games Section (Firestore Data) -->
             <div class="mb-10">
                 <h3 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Followed Games</h3>
                 <div id="no-followed-games" class="p-6 text-center text-gray-500 bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300">
                     You aren't following any games yet. Head over to the Live Game Feed to start tracking!
                 </div>
-                <!-- Games rendered here -->
                 <div id="followed-games-container" class="flex flex-wrap gap-4 overflow-x-auto pb-4">
                     <!-- Followed game cards will be injected here -->
                 </div>
@@ -189,7 +160,7 @@
         </div>
 
         <!-- Scores View (Game Feed) -->
-        <div id="scores-view" class="space-y-6">
+        <div id="scores-view" class="hidden space-y-6">
             <h2 class="text-3xl font-bold text-gray-800">Live Game Feed</h2>
             
             <!-- Filter Bar -->
@@ -205,7 +176,6 @@
                     <option value="Scheduled">Scheduled</option>
                     <option value="Final">Final</option>
                 </select>
-                <!-- NEW SEARCH BAR: Added to the right of the status filter -->
                 <input type="text" id="team-search" placeholder="Search team name..." class="flex-grow border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500 sm:ml-auto">
             </div>
 
@@ -261,17 +231,55 @@
         setLogLevel('Debug');
 
         // --- GLOBAL FIREBASE/APP VARS ---
+        
+        // ====================================================================================
+        // IMPORTANT: USER-PROVIDED FALLBACK CONFIGURATION
+        // If you are running this code outside of the Canvas environment, you MUST 
+        // replace the placeholder values below with your actual Firebase project credentials.
+        // Also, ensure the 'Anonymous' sign-in provider is enabled in your project settings.
+        // ====================================================================================
+        const USER_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCsunmtOlyDZHxzVBOkvQsduSyg4MU50LA", // <-- REPLACE THIS
+            authDomain: "playcallbackend.firebaseapp.com", // <-- REPLACE THIS
+            projectId: "playcallbackend", // <-- REPLACE THIS
+            storageBucket: "playcallbackend.firebasestorage.app",
+            messagingSenderId: "977048745219",
+            appId: "1:977048745219:web:39669929d446eddaab6536",
+            measurementId: "G-YXELM1JJSH"
+        };
+        // ====================================================================================
+
+        // The application ID used for Firestore paths (artifacts/{appId}/...)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
+        // Use the Canvas-provided config if available, otherwise fall back to the user-provided config
+        let resolvedFirebaseConfig;
+        try {
+            const environmentConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : {};
+            // If the environment config has a projectId, use it; otherwise, use the user's config
+            if (environmentConfig.projectId) {
+                resolvedFirebaseConfig = environmentConfig;
+            } else {
+                resolvedFirebaseConfig = USER_FIREBASE_CONFIG;
+            }
+        } catch (e) {
+            console.error("Failed to parse environment config, falling back to USER_FIREBASE_CONFIG.", e);
+            resolvedFirebaseConfig = USER_FIREBASE_CONFIG;
+        }
+
+        // A simple check to ensure the user has updated the configuration outside of Canvas
+        if (!resolvedFirebaseConfig.projectId || resolvedFirebaseConfig.projectId.includes("YOUR_PROJECT_ID")) {
+            console.warn("⚠️ Firebase Warning: Running with dummy configuration. Please update the 'USER_FIREBASE_CONFIG' object with your actual Firebase project credentials to run externally.");
+        }
+
+
         let app, db, auth;
         let userId = null; // Will be set after auth
         let isAuthReady = false; // Flag to indicate auth state is resolved
 
         // --- GLOBAL DATA & SETUP ---
         let gamesData = []; 
-        // THIS IS NOW MANAGED BY FIRESTORE LISTENER
         let followedGames = {}; 
         let fetchErrorCount = 0;
         
@@ -317,6 +325,33 @@
                 container.classList.add('hidden');
             });
         }
+        
+        // --- Firestore Path Helper Function ---
+        
+        /**
+         * Determines the correct Firestore document reference for followed games
+         * based on whether the app is running in the Canvas environment or externally.
+         * * For external runs (appId === 'default-app-id'), a simpler path is used to
+         * avoid conflicts with external security rules which may not permit the 'artifacts' structure.
+         * For internal runs, the standard Canvas path is used.
+         */
+        function getFollowedGamesDocRef(dbInstance, currentUserId) {
+            if (!dbInstance || !currentUserId) {
+                console.error("Firestore DB or User ID is missing for document reference.");
+                return null;
+            }
+
+            if (appId === 'default-app-id') {
+                // Simpler path for external testing: users/{userId}/followed_games/user_follows
+                console.log(`Using simplified path for external testing: users/${currentUserId}/followed_games/user_follows`);
+                return doc(dbInstance, 'users', currentUserId, 'followed_games', 'user_follows');
+            } else {
+                // Standard path for the Canvas environment: artifacts/{appId}/users/{userId}/followed_games/user_follows
+                console.log(`Using standard path for Canvas environment: artifacts/${appId}/users/${currentUserId}/followed_games/user_follows`);
+                return doc(dbInstance, 'artifacts', appId, 'users', currentUserId, 'followed_games', 'user_follows');
+            }
+        }
+
 
         // --- Date Helper Functions ---
 
@@ -444,8 +479,6 @@
                 { daysAgo: 2, label: '2 Days Ago' }
             ];
             
-            // NOTE: Removed status indicator updates as requested by the user.
-
             for (const dateConfig of datesToFetch) {
                 const apiDate = getApiDate(dateConfig.daysAgo);
                 
@@ -491,7 +524,6 @@
             gamesData = uniqueGames;
 
             // Re-render the relevant views (triggered after data is fetched)
-            // The dashboard relies on both gamesData and the Firestore-synced followedGames
             renderFollowedGames();
             renderScores();
             renderAdminPanel();
@@ -775,7 +807,6 @@
                 // Score H/A - Now read-only inputs
                 const scoreCell = row.insertCell();
                 scoreCell.className = 'flex space-x-2 p-3';
-                // IMPORTANT: Changed class from 'admin-input' to 'admin-input' to match the fixed CSS selector
                 scoreCell.innerHTML = `
                     <input type="number" class="admin-input bg-gray-100 cursor-not-allowed" value="${game.homeScore}" readonly title="API data is read-only">
                     <input type="number" class="admin-input bg-gray-100 cursor-not-allowed" value="${game.awayScore}" readonly title="API data is read-only">
@@ -860,7 +891,7 @@
         }
         
         /**
-         * UPDATED: Now writes to Firestore instead of localStorage.
+         * Writes to Firestore to update the user's followed games list.
          */
         async function handleFollowToggle(e) {
             if (!userId) {
@@ -886,16 +917,18 @@
             
             if (success) {
                 try {
-                    // Firestore path: /artifacts/{appId}/users/{userId}/followed_games/user_follows
-                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'followed_games', 'user_follows');
+                    // Use the helper to get the correct document reference
+                    const docRef = getFollowedGamesDocRef(db, userId);
                     
-                    // Write the entire updated map to Firestore
-                    await setDoc(docRef, { following: newFollowedGames });
-                    // NOTE: The UI update will be handled by the Firestore onSnapshot listener
+                    if (docRef) {
+                        // Write the entire updated map to Firestore
+                        await setDoc(docRef, { following: newFollowedGames });
+                        // NOTE: The UI update will be handled by the Firestore onSnapshot listener
+                    }
                     
                 } catch (error) {
                     console.error("Error writing followed games to Firestore: ", error);
-                    showMessageBox("Save Error", "Failed to update follow status in the cloud. Please try again.");
+                    showMessageBox("Save Error", `Failed to update follow status in the cloud. Check your Firestore Security Rules. Error: ${error.message}`);
                 }
             }
         }
@@ -958,73 +991,78 @@
          */
         async function initFirebaseAndLoadData() {
             try {
-                app = initializeApp(firebaseConfig);
+                // Check if the config is valid before calling initializeApp
+                if (!resolvedFirebaseConfig.projectId || resolvedFirebaseConfig.projectId.includes("YOUR_PROJECT_ID")) {
+                    showMessageBox("Configuration Error", "Firebase failed to initialize. Please update the 'USER_FIREBASE_CONFIG' object in the script with your actual project keys.");
+                    return;
+                }
+
+                app = initializeApp(resolvedFirebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // 1. Handle Authentication
-                let authPromise;
-                if (initialAuthToken) {
-                    authPromise = signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    authPromise = signInAnonymously(auth);
-                }
-
-                await authPromise;
-                
-                // 2. Set up Auth State Change Listener
-                onAuthStateChanged(auth, (user) => {
+                // 1. Handle Authentication via state listener
+                onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
                         isAuthReady = true;
                         
-                        // NOTE: Removed code that updated 'auth-status' and 'user-id-display' since the bar is now hidden.
+                        // 2. Start Firestore Real-Time Listener for Followed Games
+                        const docRef = getFollowedGamesDocRef(db, userId);
 
-                        // 3. Start Firestore Real-Time Listener for Followed Games
-                        const docRef = doc(db, 'artifacts', appId, 'users', userId, 'followed_games', 'user_follows');
-                        onSnapshot(docRef, (docSnap) => {
-                            if (docSnap.exists() && docSnap.data().following) {
-                                // Update the global followedGames object from Firestore
-                                followedGames = docSnap.data().following;
-                                console.log("Followed games updated from Firestore:", followedGames);
-                            } else {
-                                // If the document doesn't exist, start with an empty list
-                                followedGames = {}; 
-                                console.log("No followed games found, initialized to empty.");
-                            }
-                            
-                            // Immediately re-render the UI views affected by followedGames change
-                            renderFollowedGames();
-                            // Re-render scores to ensure button states are correct
-                            if (!document.getElementById('scores-view').classList.contains('hidden')) {
-                                renderScores();
-                            }
+                        if (docRef) {
+                            onSnapshot(docRef, (docSnap) => {
+                                if (docSnap.exists() && docSnap.data().following) {
+                                    // Update the global followedGames object from Firestore
+                                    followedGames = docSnap.data().following;
+                                    console.log("Followed games updated from Firestore:", followedGames);
+                                } else {
+                                    // If the document doesn't exist, start with an empty list
+                                    followedGames = {}; 
+                                    console.log("No followed games found, initialized to empty.");
+                                }
+                                
+                                // Immediately re-render the UI views affected by followedGames change
+                                renderFollowedGames();
+                                if (!document.getElementById('scores-view').classList.contains('hidden')) {
+                                    renderScores();
+                                }
 
-                        }, (error) => {
-                            console.error("Firestore onSnapshot error:", error);
-                            showMessageBox("Data Sync Error", "Failed to sync followed games data from the server.");
-                        });
+                            }, (error) => {
+                                console.error("Firestore onSnapshot error:", error);
+                                showMessageBox("Data Sync Error", "Failed to sync followed games data from the server.");
+                            });
+                        }
 
-                        // 4. Start fetching ESPN scores after auth is ready
+                        // 3. Start fetching ESPN scores after auth is ready
                         fetchEspnScores();
                         // Set up interval for automatic score refreshing (e.g., every 30 seconds)
                         setInterval(fetchEspnScores, 30000); 
 
-                        // 5. Initialize the main view
+                        // 4. Initialize the main view
                         switchView('dashboard');
 
                     } else {
-                         // Fallback for unauthenticated users, though we usually sign in anonymously
-                        console.warn("User is signed out or connection failed.");
-                        isAuthReady = false;
-                        userId = null;
-                        showMessageBox("Connection Required", "Failed to authenticate. Please check your connection.");
+                        // Attempt sign-in using the provided custom token, or anonymously
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                // IMPORTANT: This only works if ANONYMOUS sign-in is enabled in your Firebase project!
+                                await signInAnonymously(auth);
+                            }
+                        } catch (error) {
+                            console.error("Firebase authentication error:", error);
+                            isAuthReady = false;
+                            userId = null;
+                            showMessageBox("Authentication Failed", `Could not sign you in. Error: ${error.message}`);
+                        }
                     }
                 });
 
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
-                showMessageBox("Initialization Failed", "Could not connect to the cloud service. Check console for details.");
+                showMessageBox("Initialization Failed", `Could not connect to the cloud service. Error: ${error.message}`);
             }
         }
 
