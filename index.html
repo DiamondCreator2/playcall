@@ -281,8 +281,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // UPDATED IMPORTS: Added query, where, updateDoc, addDoc, getDocs for prompt system
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // UPDATED IMPORTS: Added query, where, updateDoc, addDoc, getDocs, getDoc for prompt system
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -426,6 +426,21 @@
                 return collection(dbInstance, 'game_prompts');
             } else {
                 return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_prompts');
+            }
+        }
+        
+        /**
+         * NEW: Determines the correct Firestore collection reference for prompt votes (PUBLIC).
+         * @param {string} promptId - The ID of the parent prompt document.
+         */
+        function getPromptVotesColRef(dbInstance, promptId) {
+            if (!dbInstance || !promptId) return null;
+
+            if (appId === 'default-app-id') {
+                return collection(dbInstance, 'game_prompts', promptId, 'votes');
+            } else {
+                // Path: artifacts/{appId}/public/data/game_prompts/{promptId}/votes
+                return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_prompts', promptId, 'votes');
             }
         }
 
@@ -1098,7 +1113,10 @@
                     userId: userId,
                     isResolved: false,
                     answer: null,
-                    resolvedAt: null
+                    resolvedAt: null,
+                    // NEW: Initialize vote counts
+                    yesCount: 0,
+                    noCount: 0
                 };
 
                 await addDoc(promptsColRef, newPrompt);
@@ -1138,6 +1156,49 @@
                 showMessageBox("Resolution Error", `Failed to resolve prompt. Error: ${error.message}`);
             }
         }
+        
+        /**
+         * NEW: Handles recording the user's vote and updating the public vote counts in a batch.
+         */
+        async function handleVote(promptId, vote, currentUserId) {
+            if (!currentUserId) {
+                showMessageBox("Error", "Authentication is required to vote.");
+                return;
+            }
+
+            const promptDocRef = doc(getGamePromptsColRef(db), promptId);
+            const voteDocRef = doc(getPromptVotesColRef(db, promptId), currentUserId);
+            
+            try {
+                // 1. Check if the user has already voted for this specific prompt
+                const voteSnapshot = await getDoc(voteDocRef); // Use getDoc
+                if (voteSnapshot.exists()) {
+                    showMessageBox("Already Voted", `You have already voted '${voteSnapshot.data().vote}' on this question.`);
+                    return;
+                }
+
+                const batch = writeBatch(db);
+
+                // 2. Increment the public vote count on the prompt document
+                if (vote === 'Yes') {
+                    batch.update(promptDocRef, { yesCount: increment(1) });
+                } else if (vote === 'No') {
+                    batch.update(promptDocRef, { noCount: increment(1) });
+                } else {
+                    showMessageBox("Error", "Invalid vote option.");
+                    return;
+                }
+
+                // 3. Record the user's vote in the subcollection to prevent double voting
+                batch.set(voteDocRef, { vote: vote, timestamp: new Date().toISOString() });
+                
+                await batch.commit();
+
+            } catch (error) {
+                console.error("Error committing vote batch:", error);
+                showMessageBox("Vote Error", `Failed to record your vote. Error: ${error.message}`);
+            }
+        }
 
 
         // --- Filter and UI Helper Functions ---
@@ -1162,6 +1223,150 @@
             if (searchInput) {
                  searchInput.removeEventListener('input', renderScores);
                  searchInput.addEventListener('input', renderScores);
+            }
+        }
+        
+        /**
+         * NEW: Renders the active prompt state, including voting buttons and counts.
+         */
+        async function renderGamePrompt(promptToDisplay) {
+            const container = document.getElementById('live-prompt-container');
+            const textEl = document.getElementById('prompt-text');
+            const answerBox = document.getElementById('prompt-answer-box');
+            const answerResult = document.getElementById('prompt-answer-result');
+            const resolvedUser = document.getElementById('prompt-resolved-user');
+            const votingSection = document.getElementById('voting-section');
+
+            // Reset display
+            answerBox.classList.add('hidden');
+            container.classList.remove('bg-red-50', 'border-red-500', 'bg-green-50', 'border-green-500');
+            container.classList.add('bg-gray-50', 'border-gray-300'); // Default waiting state
+            votingSection.innerHTML = ''; // Clear voting section
+
+            if (promptToDisplay) {
+                textEl.textContent = promptToDisplay.question;
+                
+                if (promptToDisplay.isResolved) {
+                    // RESOLVED STATE
+                    answerBox.classList.remove('hidden');
+                    answerResult.textContent = promptToDisplay.answer;
+                    
+                    const answerColor = promptToDisplay.answer === 'Yes' ? 'bg-green-600' : 'bg-red-600';
+                    answerResult.className = `text-white ${answerColor} text-3xl font-extrabold px-4 py-2 rounded-lg inline-block shadow-md`;
+
+                    const time = new Date(promptToDisplay.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    resolvedUser.textContent = `Resolved to ${promptToDisplay.answer} at ${time}`;
+
+                    // Set container style for resolved state
+                    container.classList.remove('bg-gray-50', 'border-gray-300');
+                    container.classList.add('bg-green-50', 'border-green-500');
+
+                    // Display final vote counts prominently
+                    const totalVotes = promptToDisplay.yesCount + promptToDisplay.noCount;
+                    const yesPct = totalVotes > 0 ? ((promptToDisplay.yesCount / totalVotes) * 100).toFixed(0) : 0;
+                    const noPct = totalVotes > 0 ? ((promptToDisplay.noCount / totalVotes) * 100).toFixed(0) : 0;
+                    
+                    votingSection.innerHTML = `
+                        <div class="flex flex-col items-center p-3 rounded-xl bg-gray-100 w-full shadow-inner">
+                            <p class="text-sm font-bold text-gray-700 mb-2">FINAL VOTE TALLY</p>
+                            <p class="text-xs text-gray-500 mb-3">${totalVotes} total votes recorded.</p>
+                            <div class="w-full flex justify-around space-x-4">
+                                <div class="flex flex-col items-center p-2 rounded-lg bg-white w-1/2">
+                                    <span class="text-4xl font-black text-green-600">${yesPct}%</span>
+                                    <span class="text-sm font-semibold text-gray-700">YES</span>
+                                </div>
+                                <div class="flex flex-col items-center p-2 rounded-lg bg-white w-1/2">
+                                    <span class="text-4xl font-black text-red-600">${noPct}%</span>
+                                    <span class="text-sm font-semibold text-gray-700">NO</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                } else {
+                    // ACTIVE STATE (Voting is enabled)
+                    container.classList.remove('bg-gray-50', 'border-gray-300');
+                    container.classList.add('bg-red-50', 'border-red-500');
+                    
+                    // Check if user has already voted
+                    let userVote = null;
+                    try {
+                        const voteDocRef = doc(getPromptVotesColRef(db, promptToDisplay.id), userId);
+                        const voteSnap = await getDoc(voteDocRef);
+                        if (voteSnap.exists()) {
+                            userVote = voteSnap.data().vote;
+                        }
+                    } catch (error) {
+                        console.warn("Could not retrieve user vote status:", error);
+                        // Continue execution, userVote remains null
+                    }
+                    
+                    const disableClass = userVote ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:scale-[1.02]';
+                    const yesButtonClass = userVote === 'Yes' ? 'border-4 border-green-600 shadow-xl' : 'border-4 border-transparent';
+                    const noButtonClass = userVote === 'No' ? 'border-4 border-red-600 shadow-xl' : 'border-4 border-transparent';
+                    
+                    const totalVotes = promptToDisplay.yesCount + promptToDisplay.noCount;
+                    
+                    // Render Buttons
+                    votingSection.innerHTML = `
+                        <!-- Yes Button -->
+                        <button id="vote-yes-btn" data-vote="Yes" 
+                            class="vote-btn flex-1 bg-green-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${yesButtonClass}"
+                            ${userVote ? 'disabled' : ''}>
+                            YES <span class="text-sm font-medium ml-1">(${promptToDisplay.yesCount})</span>
+                        </button>
+                        
+                        <!-- No Button -->
+                        <button id="vote-no-btn" data-vote="No"
+                            class="vote-btn flex-1 bg-red-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${noButtonClass}"
+                            ${userVote ? 'disabled' : ''}>
+                            NO <span class="text-sm font-medium ml-1">(${promptToDisplay.noCount})</span>
+                        </button>
+                    `;
+                    
+                    // Attach click listeners to the new buttons
+                    document.querySelectorAll('.vote-btn').forEach(button => {
+                        button.onclick = (e) => {
+                            // Only allow voting if not already voted
+                            if (!userVote) {
+                                handleVote(promptToDisplay.id, e.currentTarget.dataset.vote, userId);
+                            } else {
+                                showMessageBox("Already Voted", `You already chose ${userVote}. You must wait for the prompt to be resolved.`);
+                            }
+                        };
+                    });
+                    
+                    // Add a message if already voted
+                    if (userVote) {
+                         votingSection.insertAdjacentHTML('afterend', `
+                            <p class="text-center text-sm text-gray-500 mt-2 font-medium">
+                                You voted: <span class="font-bold text-${userVote === 'Yes' ? 'green' : 'red'}-600">${userVote}</span>. Waiting for resolution.
+                            </p>
+                        `);
+                    }
+
+                    // Display current tally if votes exist
+                    if (totalVotes > 0) {
+                        const yesPct = ((promptToDisplay.yesCount / totalVotes) * 100).toFixed(0);
+                        const noPct = ((promptToDisplay.noCount / totalVotes) * 100).toFixed(0);
+
+                        votingSection.insertAdjacentHTML('afterend', `
+                            <div class="w-full mt-4">
+                                <p class="text-xs text-gray-500 mb-1 font-bold">LIVE TALLY: ${totalVotes} Votes</p>
+                                <div class="flex h-3 rounded-full overflow-hidden bg-red-200 shadow-inner">
+                                    <div style="width: ${yesPct}%" class="bg-green-500 transition-all duration-500 ease-out"></div>
+                                </div>
+                                <div class="flex justify-between text-xs font-semibold mt-1">
+                                    <span class="text-green-600">${yesPct}% Yes</span>
+                                    <span class="text-red-600">${noPct}% No</span>
+                                </div>
+                            </div>
+                        `);
+                    }
+                }
+
+            } else {
+                textEl.textContent = "Waiting for a live question...";
             }
         }
 
@@ -1207,6 +1412,11 @@
                         <p class="text-sm font-semibold mb-1 text-gray-700">LIVE YES/NO PROMPT:</p>
                         <p id="prompt-text" class="text-xl font-black text-gray-900">Waiting for a live question...</p>
                         
+                        <!-- NEW: Voting/Count Section -->
+                        <div id="voting-section" class="mt-4 pt-4 border-t border-gray-100 flex justify-center space-x-4">
+                            <!-- Voting elements injected here -->
+                        </div>
+
                         <!-- Resolution/Answer Box -->
                         <div id="prompt-answer-box" class="mt-4 pt-3 border-t border-gray-200 hidden">
                             <p class="text-sm font-medium text-gray-500 mb-2">RESULT:</p>
@@ -1227,6 +1437,7 @@
             if (unsubscribePromptListener) {
                 unsubscribePromptListener();
                 unsubscribePromptListener = null;
+                console.log("Stopped game prompt listener.");
             }
 
             // 3. Set up new prompt listener
@@ -1247,44 +1458,9 @@
                 
                 let promptToDisplay = activePrompt || latestResolvedPrompt;
 
-                const container = document.getElementById('live-prompt-container');
-                const textEl = document.getElementById('prompt-text');
-                const answerBox = document.getElementById('prompt-answer-box');
-                const answerResult = document.getElementById('prompt-answer-result');
-                const resolvedUser = document.getElementById('prompt-resolved-user');
+                // Call the new rendering function
+                renderGamePrompt(promptToDisplay);
 
-                // Reset display
-                answerBox.classList.add('hidden');
-                container.classList.remove('bg-red-50', 'border-red-500', 'bg-green-50', 'border-green-500');
-                container.classList.add('bg-gray-50', 'border-gray-300'); // Default waiting state
-
-                if (promptToDisplay) {
-                    textEl.textContent = promptToDisplay.question;
-                    
-                    if (promptToDisplay.isResolved) {
-                        // Display the resolved answer
-                        answerBox.classList.remove('hidden');
-                        answerResult.textContent = promptToDisplay.answer;
-                        
-                        const answerColor = promptToDisplay.answer === 'Yes' ? 'bg-green-600' : 'bg-red-600';
-                        answerResult.className = `text-white ${answerColor} text-3xl font-extrabold px-4 py-2 rounded-lg inline-block shadow-md`;
-
-                        const time = new Date(promptToDisplay.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        resolvedUser.textContent = `Resolved to ${promptToDisplay.answer} by Admin at ${time}`;
-
-                        // Set container style for resolved state
-                        container.classList.remove('bg-gray-50', 'border-gray-300');
-                        container.classList.add('bg-green-50', 'border-green-500');
-
-                    } else {
-                        // Display active prompt (waiting for resolution)
-                        container.classList.remove('bg-gray-50', 'border-gray-300');
-                        container.classList.add('bg-red-50', 'border-red-500');
-                    }
-
-                } else {
-                    textEl.textContent = "Waiting for a live question...";
-                }
             }, (error) => {
                 console.error("Prompt listener error:", error);
             });
