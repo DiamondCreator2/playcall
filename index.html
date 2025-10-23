@@ -282,7 +282,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         // UPDATED IMPORTS: Added query, where, updateDoc, addDoc, getDocs, getDoc for prompt system
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -343,6 +343,7 @@
         let fetchErrorCount = 0;
         let unsubscribePromptListener = null; // RENAMED: Global state for listener cleanup (used for Detail View prompt)
         let unsubscribePromptsAdmin = null; // NEW: Global state for Admin Prompts listener
+        let unsubscribeLeaderboardListener = null; // NEW: Global state for Leaderboard listener
 
         // Mock data for the Friend Activity Feed
         const mockFriends = [
@@ -441,6 +442,22 @@
             } else {
                 // Path: artifacts/{appId}/public/data/game_prompts/{promptId}/votes
                 return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'game_prompts', promptId, 'votes');
+            }
+        }
+        
+        /**
+         * NEW: Determines the correct Firestore collection reference for a game's leaderboard (PUBLIC).
+         * @param {string} gameId - The ID of the parent game.
+         */
+        function getLeaderboardColRef(dbInstance, gameId) {
+            if (!dbInstance || !gameId) return null;
+
+            if (appId === 'default-app-id') {
+                // .../leaderboards/{gameId}/users
+                return collection(dbInstance, 'leaderboards', gameId, 'users');
+            } else {
+                // Path: artifacts/{appId}/public/data/leaderboards/{gameId}/users
+                return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'leaderboards', gameId, 'users');
             }
         }
 
@@ -1166,17 +1183,65 @@
             const promptDocRef = doc(getGamePromptsColRef(db), promptId);
 
             try {
+                // 1. Get the gameId from the prompt document
+                const promptSnap = await getDoc(promptDocRef);
+                if (!promptSnap.exists()) {
+                    showMessageBox("Error", "Prompt not found. Cannot update scores.");
+                    return;
+                }
+                const gameId = promptSnap.data().gameId;
+        
+                // 2. Update the prompt document to resolve it
                 await updateDoc(promptDocRef, {
                     isResolved: true,
                     answer: answer,
                     resolvedAt: new Date().toISOString()
                 });
 
-                showMessageBox("Prompt Resolved", `The prompt has been resolved with answer: ${answer}. It will now expire for viewers and display the result.`);
+                showMessageBox("Prompt Resolved", `The prompt has been resolved with answer: ${answer}. Updating scores...`);
+
+                // 3. Update scores for all voters
+                const votesColRef = getPromptVotesColRef(db, promptId);
+                const votesSnapshot = await getDocs(votesColRef);
+                
+                if (votesSnapshot.empty) {
+                    console.log("No votes to update for this prompt.");
+                    return; // No votes, we're done.
+                }
+
+                const scoreBatch = writeBatch(db);
+                const leaderboardColRef = getLeaderboardColRef(db, gameId); // This will point to the 'users' subcollection
+
+                votesSnapshot.forEach(voteDoc => {
+                    const userId = voteDoc.id;
+                    const userVote = voteDoc.data().vote;
+                    const isCorrect = userVote === answer;
+
+                    const scoreIncrementVal = isCorrect ? 1 : 0;
+                    const correctIncrementVal = isCorrect ? 1 : 0;
+                    const incorrectIncrementVal = isCorrect ? 0 : 1;
+
+                    // Simple username generation
+                    const username = `User...${userId.substring(userId.length - 4)}`;
+
+                    const userLeaderboardDocRef = doc(leaderboardColRef, userId);
+                    
+                    // Use set with merge to create/update the user's score doc
+                    scoreBatch.set(userLeaderboardDocRef, {
+                        score: increment(scoreIncrementVal),
+                        correct: increment(correctIncrementVal),
+                        incorrect: increment(incorrectIncrementVal),
+                        username: username // This will overwrite the username every time, which is fine
+                    }, { merge: true });
+                });
+
+                // Commit all score updates
+                await scoreBatch.commit();
+                console.log(`Successfully updated scores for ${votesSnapshot.size} users for game ${gameId}.`);
 
             } catch (error) {
-                console.error(`Error resolving prompt ${promptId}:`, error);
-                showMessageBox("Resolution Error", `Failed to resolve prompt. Error: ${error.message}`);
+                console.error(`Error resolving prompt or updating scores ${promptId}:`, error);
+                showMessageBox("Score Update Error", `Failed to update scores. Error: ${error.message}`);
             }
         }
         
@@ -1491,6 +1556,15 @@
                     <p class="text-gray-500 mt-2">
                         Game data is live! The full play-by-play and chat features would integrate here.
                     </p>
+                    
+                    <!-- NEW: Leaderboard Section -->
+                    <div id="leaderboard-container" class="mt-8 w-full max-w-lg">
+                        <h4 class="text-2xl font-bold text-gray-700 text-center">Game Leaderboard</h4>
+                        <div id="leaderboard-list" class="mt-4 bg-white p-4 rounded-lg shadow-md border">
+                            <!-- Leaderboard rows injected here -->
+                            <p id="leaderboard-loading" class="text-center text-gray-500">Loading leaderboard...</p>
+                        </div>
+                    </div>
                 </div>
             `;
             
@@ -1524,6 +1598,51 @@
 
             }, (error) => {
                 console.error("Prompt listener error:", error);
+            });
+            
+            // 4. NEW: Set up new leaderboard listener
+            if (unsubscribeLeaderboardListener) {
+                unsubscribeLeaderboardListener(); // Clean up just in case
+            }
+            
+            const leaderboardColRef = getLeaderboardColRef(db, gameId);
+            const q_leaderboard = query(leaderboardColRef, orderBy('score', 'desc'));
+
+            unsubscribeLeaderboardListener = onSnapshot(q_leaderboard, (snapshot) => {
+                const players = [];
+                snapshot.forEach(doc => {
+                    players.push({ id: doc.id, ...doc.data() });
+                });
+                
+                const leaderboardList = document.getElementById('leaderboard-list');
+                
+                if (snapshot.empty) {
+                    leaderboardList.innerHTML = `<p class="text-center text-gray-500">No scores yet. Be the first to play!</p>`;
+                } else {
+                    leaderboardList.innerHTML = players.map((player, index) => {
+                        const rankColor = index === 0 ? 'text-red-600' : index === 1 ? 'text-blue-600' : index === 2 ? 'text-green-600' : 'text-gray-900';
+                        const score = player.score || 0;
+                        const correct = player.correct || 0;
+                        const incorrect = player.incorrect || 0;
+                        
+                        return `
+                            <div class="flex justify-between items-center py-2 border-b last:border-b-0">
+                                <div class="flex items-center">
+                                    <span class="font-bold ${rankColor} w-6 text-center">#${index + 1}</span>
+                                    <span class="text-gray-700 ml-2 font-medium">${player.username}</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="font-bold text-lg text-red-600">${score} pts</span>
+                                    <span class="text-xs text-gray-500 block">(${correct}C / ${incorrect}W)</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }, (error) => {
+                console.error("Leaderboard listener error:", error);
+                const leaderboardList = document.getElementById('leaderboard-list');
+                leaderboardList.innerHTML = `<p class="text-center text-red-500">Error loading leaderboard.</p>`;
             });
         }
         
@@ -1601,6 +1720,12 @@
                 unsubscribePromptListener();
                 unsubscribePromptListener = null;
                 console.log("Stopped game prompt listener.");
+            }
+            // NEW: Clean up leaderboard listener
+            if (unsubscribeLeaderboardListener) {
+                unsubscribeLeaderboardListener();
+                unsubscribeLeaderboardListener = null;
+                console.log("Stopped leaderboard listener.");
             }
             
             // Cleanup: Stop the admin prompt listener if moving away from the admin view
@@ -1813,4 +1938,6 @@
     </script>
 </body>
 </html>
+
+
 
