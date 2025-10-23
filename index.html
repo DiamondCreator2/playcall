@@ -282,7 +282,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         // UPDATED IMPORTS: Added query, where, updateDoc, addDoc, getDocs, getDoc for prompt system
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -1020,7 +1020,13 @@
                             </button>
                         `;
                     } else {
-                        actionCell.textContent = 'Actioned';
+                        // Show 'Actioned' text and a Delete button
+                        actionCell.innerHTML = `
+                            <span class="text-sm text-gray-600 mr-2">Actioned</span>
+                            <button data-id="${p.id}" class="delete-btn bg-red-700 text-white px-3 py-1 rounded-lg text-sm hover:bg-red-800 transition duration-150">
+                                Delete
+                            </button>
+                        `;
                     }
                 });
 
@@ -1030,6 +1036,17 @@
                         const id = e.target.dataset.id;
                         const answer = e.target.dataset.answer;
                         handleSetAnswer(id, answer);
+                    };
+                });
+
+                // NEW: Attach event listeners for delete buttons
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.onclick = (e) => {
+                        const id = e.target.dataset.id;
+                        // Note: A confirmation dialog would be ideal here, but
+                        // we are avoiding confirm() and showMessageBox is one-way.
+                        // Proceeding with direct deletion.
+                        handleDeletePrompt(id);
                     };
                 });
             }, (error) => {
@@ -1160,6 +1177,44 @@
             } catch (error) {
                 console.error(`Error resolving prompt ${promptId}:`, error);
                 showMessageBox("Resolution Error", `Failed to resolve prompt. Error: ${error.message}`);
+            }
+        }
+        
+        /**
+         * NEW: Handles deleting a prompt and all its subcollection votes.
+         */
+        async function handleDeletePrompt(promptId) {
+            if (!isAuthReady) {
+                showMessageBox("Error", "Authentication not ready.");
+                return;
+            }
+            
+            console.log(`Attempting to delete prompt: ${promptId}`);
+            
+            const promptDocRef = doc(getGamePromptsColRef(db), promptId);
+            const votesColRef = getPromptVotesColRef(db, promptId);
+
+            try {
+                // 1. Delete all votes in the subcollection first
+                const votesSnapshot = await getDocs(votesColRef);
+                if (!votesSnapshot.empty) {
+                    const batch = writeBatch(db);
+                    votesSnapshot.docs.forEach(voteDoc => {
+                        batch.delete(voteDoc.ref);
+                    });
+                    await batch.commit();
+                    console.log(`Deleted ${votesSnapshot.size} votes for prompt ${promptId}.`);
+                }
+
+                // 2. Delete the main prompt document
+                await deleteDoc(promptDocRef);
+
+                showMessageBox("Prompt Deleted", `The prompt and all its associated votes have been deleted.`);
+                // The onSnapshot listener in renderAdminPrompts will automatically update the UI.
+                
+            } catch (error) {
+                console.error(`Error deleting prompt ${promptId}:`, error);
+                showMessageBox("Delete Error", `Failed to delete prompt. Error: ${error.message}`);
             }
         }
         
@@ -1515,6 +1570,7 @@
                     // Batch: Decrement public follower count (public)
                     batch.set(gameMetadataDocRef, { followerCount: increment(-1) }, { merge: true });
                     updateSuccess = true;
+
                 }
             }
             
@@ -1757,3 +1813,4 @@
     </script>
 </body>
 </html>
+
