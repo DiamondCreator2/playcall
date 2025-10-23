@@ -677,7 +677,7 @@
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
             
             return `
-                <div class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300">
+                <div data-game-id="${game.id}" class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300" style="cursor: pointer;">
                     <div class="flex justify-between items-start mb-4">
                         <span class="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full">${game.league}</span>
                         ${followButton}
@@ -896,16 +896,22 @@
                 button.addEventListener('click', handleFollowToggle); // Add fresh
             });
             // Attach event listeners for detail links
-            document.querySelectorAll('.detail-link').forEach(link => {
-                link.removeEventListener('click', (e) => { // Remove existing
+            document.querySelectorAll('.game-card').forEach(card => {
+                card.removeEventListener('click', (e) => { // Remove existing
                     e.preventDefault();
-                    showGameDetail(e.target.dataset.gameId);
+                    showGameDetail(e.currentTarget.dataset.gameId);
                 });
-                link.addEventListener('click', (e) => { // Add fresh
+                card.addEventListener('click', (e) => { // Add fresh
+                    if (e.target.closest('.follow-btn')) {
+                        // If the follow button (or something inside it) was clicked, 
+                        // stop execution and do NOT show the game detail.
+                        return;
+                    }
                     e.preventDefault();
-                    showGameDetail(e.target.dataset.gameId);
+                    showGameDetail(e.currentTarget.dataset.gameId);
                 });
             });
+
         }
         
         /**
@@ -1751,4 +1757,3 @@
     </script>
 </body>
 </html>
-
