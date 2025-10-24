@@ -307,7 +307,7 @@
 
         <!-- Admin Panel View -->
         <div id="admin-view" class="hidden px-4 py-4 sm:px-0">
-            <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Admin Panel (Read-Only API Data)</h2>
+            <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Admin Panel</h2>
             
             <!-- NEW: Live Prompt Control Panel -->
             <div class="bg-white p-6 rounded-xl shadow-lg mb-8 border-t-4 border-red-600">
@@ -358,6 +358,25 @@
                     <p id="no-prompts-message" class="text-center text-gray-500 py-4 hidden">No active or recently resolved prompts found.</p>
                 </div>
             </div>
+
+            <!-- START: NEW Clear Leaderboard (Danger Zone) -->
+            <div class="bg-white p-6 rounded-xl shadow-lg mt-8 border-t-4 border-red-600">
+                <h3 class="text-2xl font-bold text-red-700 mb-2">Danger Zone: Clear Leaderboard</h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    Permanently delete all user scores for a specific game. This action cannot be undone. 
+                    The leaderboard will be empty until new scores are recorded.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 items-end">
+                    <div class="flex-grow w-full">
+                        <label for="clear-leaderboard-game-id" class="block text-sm font-medium text-gray-700">Game ID (e.g., NFL-12345)</label>
+                        <input type="text" id="clear-leaderboard-game-id" placeholder="NFL-12345" class="admin-input mt-1">
+                    </div>
+                    <button id="clear-leaderboard-btn" class="w-full sm:w-auto bg-red-700 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-800 transition duration-150 shadow-md">
+                        Clear All Scores
+                    </button>
+                </div>
+            </div>
+            <!-- END: NEW Clear Leaderboard (Danger Zone) -->
             
             <!-- Existing Game List -->
             <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto mt-8">
@@ -1227,6 +1246,60 @@
             }
         }
         
+        /**
+         * START: NEW Admin function to clear an entire leaderboard for a game.
+         */
+        async function handleClearLeaderboard() {
+            if (!isAuthReady || !auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL) {
+                showMessageBox("Access Denied", "You do not have permission to perform this action.");
+                return;
+            }
+
+            const gameId = document.getElementById('clear-leaderboard-game-id').value.trim();
+            if (!gameId) {
+                showMessageBox("Input Required", "Please enter a Game ID to clear its leaderboard.");
+                return;
+            }
+
+            // Show a confirmation box first
+            showConfirmBox(
+                "Confirm Leaderboard Deletion",
+                `Are you sure you want to permanently delete ALL scores for Game ID: ${gameId}? This cannot be undone.`,
+                async () => {
+                    // This code runs if the admin clicks "Confirm"
+                    console.log(`Admin confirmed deletion for leaderboard: ${gameId}`);
+                    try {
+                        const leaderboardColRef = getLeaderboardColRef(db, gameId);
+                        const scoresSnapshot = await getDocs(leaderboardColRef);
+
+                        if (scoresSnapshot.empty) {
+                            showMessageBox("Leaderboard Empty", `The leaderboard for ${gameId} is already empty.`);
+                            document.getElementById('clear-leaderboard-game-id').value = '';
+                            return;
+                        }
+
+                        const batch = writeBatch(db);
+                        scoresSnapshot.docs.forEach(doc => {
+                            batch.delete(doc.ref);
+                        });
+
+                        await batch.commit();
+
+                        console.log(`Successfully deleted ${scoresSnapshot.size} score documents for game ${gameId}.`);
+                        showMessageBox("Success", `Successfully cleared the leaderboard for ${gameId}. ${scoresSnapshot.size} entries were deleted.`);
+                        document.getElementById('clear-leaderboard-game-id').value = '';
+
+                    } catch (error) {
+                        console.error(`Error clearing leaderboard for ${gameId}:`, error);
+                        showMessageBox("Delete Error", `Failed to clear leaderboard. Error: ${error.message}`);
+                    }
+                }
+            );
+        }
+        /**
+         * END: NEW Admin function
+         */
+
         /**
          * NEW: Gated vote function.
          */
@@ -2119,6 +2192,10 @@
                 document.getElementById('prompt-send-btn').addEventListener('click', handleNewPrompt);
                 document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname);
 
+                // START: NEW Admin listener for clearing leaderboard
+                document.getElementById('clear-leaderboard-btn').addEventListener('click', handleClearLeaderboard);
+                // END: NEW Admin listener
+
                 // NEW: Account View Listeners
                 document.getElementById('save-nickname-btn-account').addEventListener('click', handleSaveNickname);
                 document.getElementById('change-password-btn').addEventListener('click', handleChangePassword);
@@ -2212,4 +2289,3 @@
     </script>
 </body>
 </html>
-
