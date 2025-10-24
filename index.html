@@ -496,6 +496,7 @@
         let isAuthReady = false; // Flag to indicate auth state is resolved
         let isAnonymous = true; // NEW: Flag to track if user is guest or real
         let userNickname = null; 
+        const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
 
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
@@ -1773,8 +1774,23 @@
                 populateLeagueFilter(); 
                 renderScores();
             } else if (view === 'admin') {
-                document.getElementById('admin-view').classList.remove('hidden');
-                renderAdminPanel();
+                // NEW: Check for admin privileges
+                if (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) {
+                    document.getElementById('admin-view').classList.remove('hidden');
+                    renderAdminPanel();
+                } else {
+                    // Not an admin, redirect
+                    console.warn("Access Denied: User is not authorized for Admin Panel.");
+                    showMessageBox("Access Denied", "You do not have permission to view this page.");
+                    
+                    if (isAnonymous) {
+                        document.getElementById('scores-view').classList.remove('hidden'); // Show scores view
+                        highlightedView = 'scores'; // Set the view to highlight
+                    } else {
+                        document.getElementById('dashboard-view').classList.remove('hidden'); // Show dashboard view
+                        highlightedView = 'dashboard'; // Set the view to highlight
+                    }
+                }
             } else if (view === 'account') { // NEW
                 document.getElementById('account-view').classList.remove('hidden');
             }
@@ -1833,8 +1849,16 @@
                 actionBtnMobile.textContent = 'Sign Out';
                 dashboardLink.style.display = 'block';
                 dashboardLinkMobile.style.display = 'block';
-                adminLink.style.display = 'block';
-                adminLinkMobile.style.display = 'block';
+                
+                // NEW: Show Admin links only if user email matches ADMIN_EMAIL
+                if (user.email === ADMIN_EMAIL) {
+                    adminLink.style.display = 'block';
+                    adminLinkMobile.style.display = 'block';
+                } else {
+                    adminLink.style.display = 'none';
+                    adminLinkMobile.style.display = 'none';
+                }
+
                 accountLink.style.display = 'block'; // NEW
                 accountLinkMobile.style.display = 'block'; // NEW
             } else {
@@ -2188,3 +2212,4 @@
     </script>
 </body>
 </html>
+
