@@ -401,7 +401,7 @@
         </div>
 
         <!-- NEW: Account Settings View -->
-        <div id="account-view" class="hidden px-4 py-4 sm:px-0 space-y-8">
+        <div id="account-view" class_name="hidden px-4 py-4 sm:px-0 space-y-8">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Account Settings</h2>
             
             <!-- Nickname Section -->
@@ -465,8 +465,8 @@
     <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // NEW: Added Email/Password auth functions and signOut, AND password/delete functions
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // NEW: Added Email/Password auth functions, signOut, password/delete functions, AND setPersistence
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
@@ -1666,6 +1666,7 @@
                     <div id="live-prompt-container" class="mt-6 p-4 border-l-4 rounded-lg shadow-inner w-full max-w-lg transition duration-300 bg-gray-50 border-gray-300">
                         <p class="text-sm font-semibold mb-1 text-gray-700">LIVE YES/NO PROMPT:</p>
                         <p id="prompt-text" class="text-xl font-black text-gray-900">Waiting for a live question...</p>
+
                         <div id="voting-section" class="mt-4 pt-4 border-t border-gray-100 flex justify-center space-x-4">
                         </div>
                         <div id="prompt-answer-box" class="mt-4 pt-3 border-t border-gray-200 hidden">
@@ -2130,6 +2131,12 @@
                 app = initializeApp(resolvedFirebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                
+                // --- NEW: Set persistence to 'local' ---
+                // This tells Firebase to save the user's session in localStorage,
+                // so they stay logged in even after closing the browser tab.
+                await setPersistence(auth, browserLocalPersistence);
+                // --- End of new code ---
                 
                 // 1. Handle Authentication via state listener
                 onAuthStateChanged(auth, async (user) => {
