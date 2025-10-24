@@ -140,17 +140,35 @@
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         
         <!-- Dashboard View (Followed Games) -->
-        <div id="dashboard-view" class="px-4 py-4 sm:px-0">
-            <h2 class="text-3xl font-extrabold text-gray-900 mb-6">Your Dashboard</h2>
+        <div id="dashboard-view" class="px-4 py-4 sm:px-0 space-y-8">
+            <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Your Dashboard</h2>
+            
+            <!-- NEW: Nickname Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-red-600">
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Your Public Nickname</h3>
+                <p class="text-sm text-gray-600 mb-4">This name will appear on game leaderboards. Your User ID is: <code class="text-xs bg-gray-100 p-1 rounded-md" id="user-id-display">Loading...</code></p>
+                <div class="flex flex-col sm:flex-row gap-4 items-center">
+                    <div class="flex-grow w-full">
+                        <label for="nickname-input" class="block text-sm font-medium text-gray-700">Set Nickname</label>
+                        <input type="text" id="nickname-input" placeholder="Enter your nickname..." class="admin-input mt-1 w-full">
+                    </div>
+                    <button id="save-nickname-btn" class="w-full sm:w-auto bg-red-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-700 transition duration-150 shadow-md sm:self-end">
+                        Save
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500 mt-3">Current Nickname: <span id="current-nickname-display" class="font-bold text-gray-700">Loading...</span></p>
+            </div>
+            
             <!-- Friend Activity Section (Mock) -->
             <div>
                 <h3 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Friend Activity (Mock)</h3>
                 <div id="friend-activity-list">
                     <!-- Friend activity list will be injected here -->
                 </div>
-            </div><br><br>
+            </div>
+            
             <!-- Followed Games Section (Firestore Data) -->
-            <div class="mb-10">
+            <div>
                 <h3 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Followed Games</h3>
                 <div id="no-followed-games" class="p-6 text-center text-gray-500 bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300">
                     You aren't following any games yet. Head over to the Live Game Feed to start tracking!
@@ -335,6 +353,7 @@
         let app, db, auth;
         let userId = null; // Will be set after auth
         let isAuthReady = false; // Flag to indicate auth state is resolved
+        let userNickname = null; // NEW: Global var for user's nickname
 
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
@@ -344,6 +363,7 @@
         let unsubscribePromptListener = null; // RENAMED: Global state for listener cleanup (used for Detail View prompt)
         let unsubscribePromptsAdmin = null; // NEW: Global state for Admin Prompts listener
         let unsubscribeLeaderboardListener = null; // NEW: Global state for Leaderboard listener
+        let unsubscribeUserProfileListener = null; // NEW: Global state for User Profile listener
 
         // Mock data for the Friend Activity Feed
         const mockFriends = [
@@ -400,6 +420,34 @@
                 return doc(dbInstance, 'users', currentUserId, 'followed_games', 'user_follows');
             } else {
                 return doc(dbInstance, 'artifacts', appId, 'users', currentUserId, 'followed_games', 'user_follows');
+            }
+        }
+
+        /**
+         * NEW: Determines the correct Firestore document reference for a user's PUBLIC profile (nickname).
+         */
+        function getUserPublicProfileDocRef(dbInstance, currentUserId) {
+            if (!dbInstance || !currentUserId) return null;
+
+            if (appId === 'default-app-id') {
+                return doc(dbInstance, 'public_user_profiles', currentUserId);
+            } else {
+                // Path: artifacts/{appId}/public/data/user_profiles/{userId}
+                return doc(dbInstance, 'artifacts', appId, 'public', 'data', 'user_profiles', currentUserId);
+            }
+        }
+        
+        /**
+         * NEW: Determines the correct Firestore collection reference for all user PUBLIC profiles.
+         */
+        function getUserPublicProfileColRef(dbInstance) {
+            if (!dbInstance) return null;
+
+            if (appId === 'default-app-id') {
+                return collection(dbInstance, 'public_user_profiles');
+            } else {
+                // Path: artifacts/{appId}/public/data/user_profiles
+                return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'user_profiles');
             }
         }
         
@@ -985,7 +1033,8 @@
 
             const promptsColRef = getGamePromptsColRef(db);
             // Query for all prompts (no filtering)
-            const q = query(promptsColRef);
+            // NEW: Order by createdAt descending
+            const q = query(promptsColRef, orderBy('createdAt', 'desc'));
             
             unsubscribePromptsAdmin = onSnapshot(q, (snapshot) => {
                 const prompts = [];
@@ -993,8 +1042,7 @@
                     prompts.push({ id: doc.id, ...doc.data() });
                 });
                 
-                // Sort in memory by creation date (newest first)
-                prompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                // No longer need to sort in memory, Firestore is doing it
                 const limitedPrompts = prompts.slice(0, 20); // Limit to last 20 for performance/clarity
 
                 const tbody = document.getElementById('admin-prompt-list');
@@ -1200,7 +1248,7 @@
 
                 showMessageBox("Prompt Resolved", `The prompt has been resolved with answer: ${answer}. Updating scores...`);
 
-                // 3. Update scores for all voters
+                // 3. Get all votes for this prompt
                 const votesColRef = getPromptVotesColRef(db, promptId);
                 const votesSnapshot = await getDocs(votesColRef);
                 
@@ -1209,6 +1257,28 @@
                     return; // No votes, we're done.
                 }
 
+                // 4. NEW: Get all nicknames for the voters in one batch
+                const userIds = votesSnapshot.docs.map(d => d.id);
+                const nicknameMap = new Map();
+                
+                // Firestore 'in' queries are limited to 30 items. 
+                // If more than 30 voters, we must batch the profile queries.
+                const MAX_IN_QUERIES = 30;
+                const profilesColRef = getUserPublicProfileColRef(db);
+
+                for (let i = 0; i < userIds.length; i += MAX_IN_QUERIES) {
+                    const batchUserIds = userIds.slice(i, i + MAX_IN_QUERIES);
+                    const profilesQuery = query(profilesColRef, where('userId', 'in', batchUserIds));
+                    const profilesSnapshot = await getDocs(profilesQuery);
+                    
+                    profilesSnapshot.forEach(doc => {
+                        nicknameMap.set(doc.id, doc.data().nickname);
+                    });
+                }
+                console.log("Fetched nicknames for voters:", nicknameMap);
+
+
+                // 5. Prepare batch to update scores
                 const scoreBatch = writeBatch(db);
                 const leaderboardColRef = getLeaderboardColRef(db, gameId); // This will point to the 'users' subcollection
 
@@ -1221,21 +1291,22 @@
                     const correctIncrementVal = isCorrect ? 1 : 0;
                     const incorrectIncrementVal = isCorrect ? 0 : 1;
 
-                    // Simple username generation
-                    const username = `User...${userId.substring(userId.length - 4)}`;
+                    // NEW: Use the fetched nickname, or a default
+                    const username = nicknameMap.get(userId) || `User...${userId.substring(userId.length - 4)}`;
 
                     const userLeaderboardDocRef = doc(leaderboardColRef, userId);
                     
                     // Use set with merge to create/update the user's score doc
+                    // This will now update the username field with the public nickname
                     scoreBatch.set(userLeaderboardDocRef, {
                         score: increment(scoreIncrementVal),
                         correct: increment(correctIncrementVal),
                         incorrect: increment(incorrectIncrementVal),
-                        username: username // This will overwrite the username every time, which is fine
+                        username: username 
                     }, { merge: true });
                 });
 
-                // Commit all score updates
+                // 6. Commit all score updates
                 await scoreBatch.commit();
                 console.log(`Successfully updated scores for ${votesSnapshot.size} users for game ${gameId}.`);
 
@@ -1323,6 +1394,44 @@
             } catch (error) {
                 console.error("Error committing vote batch:", error);
                 showMessageBox("Vote Error", `Failed to record your vote. Error: ${error.message}`);
+            }
+        }
+        
+        /**
+         * NEW: Saves the user's public nickname to Firestore.
+         */
+        async function handleSaveNickname() {
+            if (!isAuthReady || !userId) {
+                showMessageBox("Error", "You must be logged in to save a nickname.");
+                return;
+            }
+
+            const nicknameInput = document.getElementById('nickname-input');
+            const newName = nicknameInput.value.trim();
+
+            if (newName.length < 3) {
+                showMessageBox("Nickname Too Short", "Your nickname must be at least 3 characters long.");
+                return;
+            }
+            if (newName.length > 20) {
+                showMessageBox("Nickname Too Long", "Your nickname must be 20 characters or less.");
+                return;
+            }
+            
+            const profileDocRef = getUserPublicProfileDocRef(db, userId);
+            
+            try {
+                await setDoc(profileDocRef, { 
+                    nickname: newName,
+                    userId: userId // Store userId for 'in' query
+                }, { merge: true });
+                
+                showMessageBox("Nickname Saved", `Your public nickname is now set to: ${newName}`);
+                // The onSnapshot listener will update the display automatically.
+
+            } catch (error) {
+                console.error("Error saving nickname:", error);
+                showMessageBox("Save Error", `Failed to save nickname. Error: ${error.message}`);
             }
         }
 
@@ -1577,7 +1686,14 @@
 
             // 3. Set up new prompt listener
             const promptsColRef = getGamePromptsColRef(db);
-            const q = query(promptsColRef, where('gameId', '==', gameId));
+            
+            // FIX: Removed orderBy('createdAt', 'desc') from the query to avoid composite index error.
+            // We will filter by gameId only and sort the results in memory.
+            const q = query(
+                promptsColRef, 
+                where('gameId', '==', gameId)
+                // orderBy('createdAt', 'desc') // <-- REMOVED
+            );
 
             unsubscribePromptListener = onSnapshot(q, (snapshot) => {
                 const allPrompts = [];
@@ -1585,12 +1701,15 @@
                     allPrompts.push({ id: doc.id, ...doc.data() });
                 });
                 
-                // Sort by creation date (newest first)
+                // NEW: Sort in memory since we can't do it in the query
                 allPrompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
+                
+                // Find the most recent active prompt
                 const activePrompt = allPrompts.find(p => p.isResolved === false);
+                // Find the most recent resolved prompt (which will be the first in the sorted list)
                 const latestResolvedPrompt = allPrompts.find(p => p.isResolved === true);
                 
+                // Prioritize showing the active prompt. If none, show the *latest* resolved one.
                 let promptToDisplay = activePrompt || latestResolvedPrompt;
 
                 // Call the new rendering function
@@ -1625,11 +1744,14 @@
                         const correct = player.correct || 0;
                         const incorrect = player.incorrect || 0;
                         
+                        // NEW: Use the username from the player object, which is now set by handleSetAnswer
+                        const displayName = player.username || `User...${player.id.substring(player.id.length - 4)}`;
+                        
                         return `
                             <div class="flex justify-between items-center py-2 border-b last:border-b-0">
                                 <div class="flex items-center">
                                     <span class="font-bold ${rankColor} w-6 text-center">#${index + 1}</span>
-                                    <span class="text-gray-700 ml-2 font-medium">${player.username}</span>
+                                    <span class="text-gray-700 ml-2 font-medium">${displayName}</span>
                                 </div>
                                 <div class="text-right">
                                     <span class="font-bold text-lg text-red-600">${score} pts</span>
@@ -1805,8 +1927,33 @@
                         userId = user.uid;
                         isAuthReady = true;
                         
+                        // NEW: Display User ID on Dashboard
+                        document.getElementById('user-id-display').textContent = userId;
+
+                        // NEW: Clean up old profile listener if it exists
+                        if (unsubscribeUserProfileListener) {
+                            unsubscribeUserProfileListener();
+                        }
+
+                        // NEW: Start listener for user's PUBLIC profile (nickname)
+                        const profileDocRef = getUserPublicProfileDocRef(db, userId);
+                        unsubscribeUserProfileListener = onSnapshot(profileDocRef, (docSnap) => {
+                            const defaultNickname = `User...${userId.substring(userId.length - 4)}`;
+                            if (docSnap.exists() && docSnap.data().nickname) {
+                                userNickname = docSnap.data().nickname;
+                                document.getElementById('current-nickname-display').textContent = userNickname;
+                                document.getElementById('nickname-input').value = userNickname;
+                            } else {
+                                userNickname = null; // No nickname set
+                                document.getElementById('current-nickname-display').textContent = defaultNickname;
+                                document.getElementById('nickname-input').value = ''; // Clear input
+                            }
+                        }, (error) => {
+                            console.error("Firestore onSnapshot (User Profile) error:", error);
+                            document.getElementById('current-nickname-display').textContent = "Error loading nickname.";
+                        });
+                        
                         // 2. Start Firestore Real-Time Listener for PRIVATE Followed Games
-                        // This listener is crucial and needs to be inside the auth block.
                         const userDocRef = getFollowedGamesDocRef(db, userId);
 
                         if (userDocRef) {
@@ -1867,6 +2014,9 @@
                         
                         // 6. Set up Admin Panel listener for new prompt creation
                         document.getElementById('prompt-send-btn').addEventListener('click', handleNewPrompt);
+                        
+                        // 7. NEW: Set up Nickname save button listener
+                        document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname);
 
 
                     } else {
@@ -1938,6 +2088,4 @@
     </script>
 </body>
 </html>
-
-
 
