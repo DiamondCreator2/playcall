@@ -57,6 +57,22 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW: Custom Confirm Box Modal -->
+    <div id="confirm-box-container" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300">
+        <div class="bg-white rounded-lg shadow-2xl p-6 max-w-sm w-full">
+            <h3 id="confirm-box-title" class="text-xl font-bold mb-4 text-gray-800">Confirm Action</h3>
+            <p id="confirm-box-body" class="text-gray-600 mb-6">Are you sure?</p>
+            <div class="flex justify-end space-x-3">
+                <button id="confirm-box-cancel" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition duration-150">
+                    Cancel
+                </button>
+                <button id="confirm-box-ok" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition duration-150">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
     
     <!-- Header: Navigation and Logo -->
     <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
@@ -108,6 +124,10 @@
                         <a href="#" id="admin-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
                             Admin Panel
                         </a>
+                        <!-- NEW ACCOUNT LINK -->
+                        <a href="#" id="account-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
+                            Account
+                        </a>
                     </nav>
 
                 </div>
@@ -138,6 +158,8 @@
                 <a href="#" id="dashboard-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150">Dashboard</a>
     		    <a href="#" id="scores-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Live Scores</a>
     		    <a href="#" id="admin-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Admin Panel</a>
+                <!-- NEW ACCOUNT LINK -->
+                <a href="#" id="account-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Account</a>
                 
                 <!-- NEW: Auth Status for Mobile -->
                 <div id="auth-status-mobile" class="px-3 pt-4 pb-2 border-t border-gray-700">
@@ -359,13 +381,73 @@
             </div>
         </div>
 
+        <!-- NEW: Account Settings View -->
+        <div id="account-view" class="hidden px-4 py-4 sm:px-0 space-y-8">
+            <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Account Settings</h2>
+            
+            <!-- Nickname Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-red-600">
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Public Nickname</h3>
+                <p class="text-sm text-gray-600 mb-4">This name will appear on game leaderboards. Your User ID is: <code class="text-xs bg-gray-100 p-1 rounded-md" id="user-id-display-account">Loading...</code></p>
+                <div class="flex flex-col sm:flex-row gap-4 items-center">
+                    <div class="flex-grow w-full">
+                        <label for="nickname-input-account" class="block text-sm font-medium text-gray-700">Set Nickname</label>
+                        <input type="text" id="nickname-input-account" placeholder="Enter your nickname..." class="admin-input mt-1 w-full">
+                    </div>
+                    <button id="save-nickname-btn-account" class="w-full sm:w-auto bg-red-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-700 transition duration-150 shadow-md sm:self-end">
+                        Save
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500 mt-3">Current Nickname: <span id="current-nickname-display-account" class="font-bold text-gray-700">Loading...</span></p>
+            </div>
+
+            <!-- Change Password Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-gray-300">
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Change Password</h3>
+                <p class="text-sm text-gray-600 mb-4">Update your account password. You will be logged out after a successful change.</p>
+                <div class="space-y-4 max-w-md">
+                    <div>
+                        <label for="current-password" class="block text-sm font-medium text-gray-700">Current Password</label>
+                        <input type="password" id="current-password" class="admin-input mt-1 w-full" placeholder="••••••••">
+                    </div>
+                    <div>
+                        <label for="new-password" class="block text-sm font-medium text-gray-700">New Password</label>
+                        <input type="password" id="new-password" class="admin-input mt-1 w-full" placeholder="6+ characters">
+                    </div>
+                    <div>
+                        <label for="confirm-new-password" class="block text-sm font-medium text-gray-700">Confirm New Password</label>
+                        <input type="password" id="confirm-new-password" class="admin-input mt-1 w-full" placeholder="6+ characters">
+                    </div>
+                    <button id="change-password-btn" class="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition duration-150 shadow-md">
+                        Update Password
+                    </button>
+                </div>
+            </div>
+
+            <!-- Delete Account Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-red-600">
+                <h3 class="text-2xl font-bold text-red-700 mb-2">Danger Zone</h3>
+                <p class="text-sm text-gray-600 mb-4">Deleting your account is permanent and cannot be undone. All your data, including followed games and leaderboard scores, will be lost.</p>
+                <div class="space-y-4 max-w-md">
+                    <div>
+                        <label for="delete-account-password" class="block text-sm font-medium text-gray-700">Enter Password to Confirm Deletion</label>
+                        <input type="password" id="delete-account-password" class="admin-input mt-1 w-full" placeholder="••••••••">
+                    </div>
+                    <button id="delete-account-btn" class="w-full bg-red-700 text-white font-semibold py-2 rounded-lg hover:bg-red-800 transition duration-150 shadow-md">
+                        Delete My Account
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
     </main>
 
     <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // NEW: Added Email/Password auth functions and signOut
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // NEW: Added Email/Password auth functions and signOut, AND password/delete functions
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
@@ -462,6 +544,33 @@
             okButton.parentNode.replaceChild(newOkButton, okButton);
 
             newOkButton.addEventListener('click', () => {
+                container.classList.add('hidden');
+            });
+        }
+
+        // --- NEW: Custom Confirm Box ---
+        function showConfirmBox(title, body, onConfirm) {
+            document.getElementById('confirm-box-title').textContent = title;
+            document.getElementById('confirm-box-body').textContent = body;
+            const container = document.getElementById('confirm-box-container');
+            container.classList.remove('hidden');
+
+            const okButton = document.getElementById('confirm-box-ok');
+            const cancelButton = document.getElementById('confirm-box-cancel');
+
+            // Clone and replace buttons to remove old listeners
+            const newOkButton = okButton.cloneNode(true);
+            okButton.parentNode.replaceChild(newOkButton, okButton);
+            const newCancelButton = cancelButton.cloneNode(true);
+            cancelButton.parentNode.replaceChild(newCancelButton, cancelButton);
+
+            newOkButton.addEventListener('click', () => {
+                container.classList.add('hidden');
+                if (onConfirm) {
+                    onConfirm();
+                }
+            });
+            newCancelButton.addEventListener('click', () => {
                 container.classList.add('hidden');
             });
         }
@@ -1157,8 +1266,8 @@
             }
         }
         
-        // ... (handleSaveNickname is unchanged)
-        async function handleSaveNickname() {
+        // ... (handleSaveNickname is MODIFIED)
+        async function handleSaveNickname(event) { // NEW: added event
             if (!isAuthReady || !userId) {
                 showMessageBox("Error", "You must be logged in to save a nickname.");
                 return;
@@ -1168,8 +1277,24 @@
                  showMessageBox("Login Required", "You must have a real account to set a nickname.");
                 return;
             }
-            const nicknameInput = document.getElementById('nickname-input');
-            const newName = nicknameInput.value.trim();
+            
+            // NEW: Determine which input to read from
+            let newName = '';
+            const nicknameInputDashboard = document.getElementById('nickname-input');
+            const nicknameInputAccount = document.getElementById('nickname-input-account');
+
+            if (event && event.target.id === 'save-nickname-btn-account') {
+                newName = nicknameInputAccount.value.trim();
+            } else {
+                newName = nicknameInputDashboard.value.trim();
+            }
+            
+            // If one field was used, update the other one to match
+            if (newName) {
+                nicknameInputDashboard.value = newName;
+                nicknameInputAccount.value = newName;
+            }
+
             if (newName.length < 3) {
                 showMessageBox("Nickname Too Short", "Your nickname must be at least 3 characters long.");
                 return;
@@ -1188,6 +1313,116 @@
             } catch (error) {
                 console.error("Error saving nickname:", error);
                 showMessageBox("Save Error", `Failed to save nickname. Error: ${error.message}`);
+            }
+        }
+
+        /**
+         * NEW: Handles password change
+         */
+        async function handleChangePassword() {
+            if (!isAuthReady || !auth.currentUser || isAnonymous) {
+                showMessageBox("Error", "You must be logged in with a full account to change your password.");
+                return;
+            }
+
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmNewPassword = document.getElementById('confirm-new-password').value;
+
+            if (!currentPassword || !newPassword || !confirmNewPassword) {
+                showMessageBox("Input Required", "Please fill in all password fields.");
+                return;
+            }
+            if (newPassword.length < 6) {
+                showMessageBox("Password Too Short", "Your new password must be at least 6 characters long.");
+                return;
+            }
+            if (newPassword !== confirmNewPassword) {
+                showMessageBox("Passwords Mismatch", "Your new passwords do not match.");
+                return;
+            }
+
+            const user = auth.currentUser;
+            if (!user.email) {
+                 showMessageBox("Error", "Cannot re-authenticate user without an email. This operation is not supported for this account type.");
+                return;
+            }
+
+            try {
+                // 1. Re-authenticate the user
+                const credential = EmailAuthProvider.credential(user.email, currentPassword);
+                await reauthenticateWithCredential(user, credential);
+                
+                // 2. Update the password
+                await updatePassword(user, newPassword);
+                
+                // 3. Success
+                showMessageBox("Success", "Your password has been updated. Please log in again.");
+                
+                // Clear fields
+                document.getElementById('current-password').value = '';
+                document.getElementById('new-password').value = '';
+                document.getElementById('confirm-new-password').value = '';
+                
+                // Log the user out
+                await handleSignOut();
+
+            } catch (error) {
+                console.error("Password Change Error:", error);
+                let a = "Failed to change password. Please check your *current* password and try again.";
+                if (error.code === 'auth/wrong-password') {
+                     a = "Failed to change password. The *current* password you entered is incorrect.";
+                } else if (error.code === 'auth/too-many-requests') {
+                     a = "Too many attempts. Please try again later.";
+                }
+                showMessageBox("Password Change Failed", a);
+            }
+        }
+
+        /**
+         * NEW: Handles account deletion
+         */
+        async function handleDeleteAccount() {
+             if (!isAuthReady || !auth.currentUser || isAnonymous) {
+                showMessageBox("Error", "You must be logged in with a full account to delete it.");
+                return;
+            }
+
+            const password = document.getElementById('delete-account-password').value;
+            if (!password) {
+                showMessageBox("Password Required", "Please enter your password to confirm account deletion.");
+                return;
+            }
+
+            const user = auth.currentUser;
+             if (!user.email) {
+                 showMessageBox("Error", "Cannot re-authenticate user without an email. This operation is not supported for this account type.");
+                return;
+            }
+
+            try {
+                // 1. Re-authenticate
+                const credential = EmailAuthProvider.credential(user.email, password);
+                await reauthenticateWithCredential(user, credential);
+
+                // 2. Delete the user
+                await deleteUser(user);
+                
+                // 3. Success
+                showMessageBox("Account Deleted", "Your account has been permanently deleted. We're sorry to see you go.");
+                // User will be signed out automatically, onAuthStateChanged will handle the rest.
+                document.getElementById('delete-account-password').value = '';
+
+
+            } catch (error) {
+                console.error("Account Deletion Error:", error);
+                let a = "Failed to delete account. Please check your password and try again.";
+                if (error.code === 'auth/wrong-password') {
+                     a = "Failed to delete account. The password you entered is incorrect.";
+                } else if (error.code === 'auth/too-many-requests') {
+                     a = "Too many attempts. Please try again later.";
+                }
+                showMessageBox("Deletion Failed", a);
             }
         }
 
@@ -1503,6 +1738,7 @@
             document.getElementById('scores-view').classList.add('hidden');
             document.getElementById('admin-view').classList.add('hidden');
             document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('account-view').classList.add('hidden'); // NEW
             
             // Cleanup listeners when switching away
             if (unsubscribePromptListener) {
@@ -1539,11 +1775,13 @@
             } else if (view === 'admin') {
                 document.getElementById('admin-view').classList.remove('hidden');
                 renderAdminPanel();
+            } else if (view === 'account') { // NEW
+                document.getElementById('account-view').classList.remove('hidden');
             }
 
 
             // 1. Reset all link highlights
-            ['dashboard-link', 'scores-link', 'admin-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile'].forEach(id => {
+            ['dashboard-link', 'scores-link', 'admin-link', 'account-link', 'dashboard-link-mobile', 'scores-link-mobile', 'admin-link-mobile', 'account-link-mobile'].forEach(id => { // NEW
                 const link = document.getElementById(id);
                 if (link) {
                     link.classList.remove('text-red-400', 'bg-gray-700');
@@ -1578,6 +1816,8 @@
             const dashboardLinkMobile = document.getElementById('dashboard-link-mobile');
             const adminLink = document.getElementById('admin-link');
             const adminLinkMobile = document.getElementById('admin-link-mobile');
+            const accountLink = document.getElementById('account-link'); // NEW
+            const accountLinkMobile = document.getElementById('account-link-mobile'); // NEW
             const authStatusDiv = document.getElementById('auth-status');
             
             authStatusDiv.classList.remove('hidden'); // Show the auth status area
@@ -1595,6 +1835,8 @@
                 dashboardLinkMobile.style.display = 'block';
                 adminLink.style.display = 'block';
                 adminLinkMobile.style.display = 'block';
+                accountLink.style.display = 'block'; // NEW
+                accountLinkMobile.style.display = 'block'; // NEW
             } else {
                 // ANONYMOUS GUEST
                 const welcomeMsg = 'Welcome, Guest';
@@ -1606,6 +1848,8 @@
                 dashboardLinkMobile.style.display = 'none';
                 adminLink.style.display = 'none';
                 adminLinkMobile.style.display = 'none';
+                accountLink.style.display = 'none'; // NEW
+                accountLinkMobile.style.display = 'none'; // NEW
             }
         }
         
@@ -1680,18 +1924,28 @@
                 const profileDocRef = getUserPublicProfileDocRef(db, currentUserId);
                 unsubscribeUserProfile = onSnapshot(profileDocRef, (docSnap) => {
                     const defaultNickname = `User...${currentUserId.substring(currentUserId.length - 4)}`;
+                    let newNickname = null;
+                    let newNicknameDisplay = defaultNickname;
+                    
                     if (docSnap.exists() && docSnap.data().nickname) {
-                        userNickname = docSnap.data().nickname;
-                        document.getElementById('current-nickname-display').textContent = userNickname;
-                        document.getElementById('nickname-input').value = userNickname;
-                    } else {
-                        userNickname = null;
-                        document.getElementById('current-nickname-display').textContent = defaultNickname;
-                        document.getElementById('nickname-input').value = '';
+                        newNickname = docSnap.data().nickname;
+                        newNicknameDisplay = newNickname;
                     }
+                    
+                    userNickname = newNickname; // Update global var
+                    
+                    // Update Dashboard View
+                    document.getElementById('current-nickname-display').textContent = newNicknameDisplay;
+                    document.getElementById('nickname-input').value = newNickname || '';
+
+                    // NEW: Update Account View
+                    document.getElementById('current-nickname-display-account').textContent = newNicknameDisplay;
+                    document.getElementById('nickname-input-account').value = newNickname || '';
+
                 }, (error) => {
                     console.error("Firestore onSnapshot (User Profile) error:", error);
                     document.getElementById('current-nickname-display').textContent = "Error loading nickname.";
+                    document.getElementById('current-nickname-display-account').textContent = "Error loading nickname."; // NEW
                 });
             } else {
                 // Is anonymous, clear any potentially stale private data
@@ -1794,8 +2048,9 @@
                         // Update all UI based on auth state
                         updateAuthUI(user);
                         
-                        // Display User ID on Dashboard (if it's visible)
+                        // Display User ID on Dashboard & Account views
                         document.getElementById('user-id-display').textContent = userId;
+                        document.getElementById('user-id-display-account').textContent = userId; // NEW
 
                         // Set up the correct listeners for this user
                         setupFirestoreListeners(userId, isAnonymous);
@@ -1840,6 +2095,17 @@
                 document.getElementById('prompt-send-btn').addEventListener('click', handleNewPrompt);
                 document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname);
 
+                // NEW: Account View Listeners
+                document.getElementById('save-nickname-btn-account').addEventListener('click', handleSaveNickname);
+                document.getElementById('change-password-btn').addEventListener('click', handleChangePassword);
+                document.getElementById('delete-account-btn').addEventListener('click', () => {
+                    showConfirmBox(
+                        "Delete Account?", 
+                        "This action is permanent and cannot be undone. Are you sure you want to delete your account?",
+                        handleDeleteAccount // This function will be called if user clicks 'Confirm'
+                    );
+                });
+
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
                 showMessageBox("Initialization Failed", `Could not connect to the cloud service. Error: ${error.message}`);
@@ -1858,9 +2124,11 @@
             { id: 'admin-link', view: 'admin' },
             { id: 'dashboard-link', view: 'dashboard' },
             { id: 'scores-link', view: 'scores' },
+            { id: 'account-link', view: 'account' }, // NEW
             { id: 'admin-link-mobile', view: 'admin' },
             { id: 'dashboard-link-mobile', view: 'dashboard' },
-            { id: 'scores-link-mobile', view: 'scores' }
+            { id: 'scores-link-mobile', view: 'scores' },
+            { id: 'account-link-mobile', view: 'account' } // NEW
         ];
 
         allNavLinks.forEach(item => {
@@ -1920,6 +2188,3 @@
     </script>
 </body>
 </html>
-
-
-
