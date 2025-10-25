@@ -453,7 +453,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         // NEW: Added Email/Password auth functions, signOut, password/delete functions, AND setPersistence
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // MODIFIED: Added deleteField
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -511,7 +512,7 @@
         
         // --- GLOBAL FIRESTORE UNSUBSCRIBE FUNCTIONS ---
         let unsubscribeGameMetadata = null; // NEW
-        let unsubscribeFollowedGames = null; // NEW
+        let unsubscribeFollowedGames = null; // NEW - This will be removed
         let unsubscribeUserProfile = null; // NEW (was already global, just clarifying)
         
         let unsubscribePromptListener = null; 
@@ -583,6 +584,8 @@
         
         // --- Firestore Path Helper Functions ---
         // ... (all helper functions are unchanged)
+        // REMOVED: This function is no longer needed as 'followed_games' is part of the public profile.
+        /*
         function getFollowedGamesDocRef(dbInstance, currentUserId) {
             if (!dbInstance || !currentUserId) return null;
             if (appId === 'default-app-id') {
@@ -591,6 +594,8 @@
                 return doc(dbInstance, 'artifacts', appId, 'users', currentUserId, 'followed_games', 'user_follows');
             }
         }
+        */
+        // NEW: This function remains but will also be used to get/set followed games
         function getUserPublicProfileDocRef(dbInstance, currentUserId) {
             if (!dbInstance || !currentUserId) return null;
             if (appId === 'default-app-id') {
@@ -1460,12 +1465,59 @@
                 // 1. Re-authenticate
                 const credential = EmailAuthProvider.credential(user.email, password);
                 await reauthenticateWithCredential(user, credential);
+                
+                // --- NEW: Get user ID *before* deleting ---
+                const userIdToDelete = user.uid;
 
-                // 2. Delete the user
+                // --- NEW: Robust Deletion Logic ---
+                // Get the user's profile to see which games they followed
+                const profileDocRef = getUserPublicProfileDocRef(db, userIdToDelete);
+                const profileSnap = await getDoc(profileDocRef);
+                
+                let gamesToDecrement = [];
+                if (profileSnap.exists() && profileSnap.data().following) {
+                    gamesToDecrement = Object.keys(profileSnap.data().following);
+                }
+
+                const batch = writeBatch(db);
+
+                // 1. Decrement metadata for each followed game
+                if (gamesToDecrement.length > 0) {
+                    const metadataColRef = getGameMetadataColRef(db);
+                    console.log(`Decrementing ${gamesToDecrement.length} game followers for user ${userIdToDelete}`);
+                    for (const gameId of gamesToDecrement) {
+                        const gameMetadataDocRef = doc(metadataColRef, gameId);
+                        // Use set with merge to handle potential -1 on a non-existent doc gracefully
+                        batch.set(gameMetadataDocRef, { followerCount: increment(-1) }, { merge: true });
+                    }
+                }
+
+                // 2. Delete the user's public profile
+                if (profileSnap.exists()) {
+                    batch.delete(profileDocRef);
+                }
+                
+                // 3. (Cleanup) Attempt to delete the old private followed_games doc just in case it exists
+                // We define the path manually here since we removed the helper function
+                let oldFollowedGamesDocRef;
+                if (appId === 'default-app-id') {
+                    oldFollowedGamesDocRef = doc(db, 'users', userIdToDelete, 'followed_games', 'user_follows');
+                } else {
+                    oldFollowedGamesDocRef = doc(db, 'artifacts', appId, 'users', userIdToDelete, 'followed_games', 'user_follows');
+                }
+                if (oldFollowedGamesDocRef) {
+                    batch.delete(oldFollowedGamesDocRef);
+                }
+
+                // Commit all Firestore changes
+                await batch.commit();
+                console.log(`Successfully cleared Firestore data for user ${userIdToDelete}`);
+
+                // 4. Delete the user's Auth record (only after Firestore is done)
                 await deleteUser(user);
                 
-                // 3. Success
-                showMessageBox("Account Deleted", "Your account has been permanently deleted. We're sorry to see you go.");
+                // 5. Success
+                showMessageBox("Account Deleted", "Your account and all associated data have been permanently deleted. We're sorry to see you go.");
                 // User will be signed out automatically, onAuthStateChanged will handle the rest.
                 document.getElementById('delete-account-password').value = '';
 
@@ -1477,6 +1529,8 @@
                      a = "Failed to delete account. The password you entered is incorrect.";
                 } else if (error.code === 'auth/too-many-requests') {
                      a = "Too many attempts. Please try again later.";
+                } else if (error.code === 'firestore/permission-denied') {
+                    a = "Failed to delete account data due to permissions. The account itself may or may not have been deleted.";
                 }
                 showMessageBox("Deletion Failed", a);
             }
@@ -1753,27 +1807,25 @@
             const button = e.target;
             const gameId = button.dataset.gameId;
             const action = button.dataset.action;
-            const userDocRef = getFollowedGamesDocRef(db, userId);
-            const newFollowedGames = { ...followedGames };
+            // MODIFIED: Get the public profile doc ref, which now holds the 'following' map
+            const userDocRef = getUserPublicProfileDocRef(db, userId);
+            // const newFollowedGames = { ...followedGames }; // No longer needed
             const metadataColRef = getGameMetadataColRef(db);
             const gameMetadataDocRef = doc(metadataColRef, gameId);
             const batch = writeBatch(db);
             let updateSuccess = false;
 
             if (action === 'follow') {
-                if (!followedGames[gameId]) {
-                    newFollowedGames[gameId] = true;
-                    batch.set(userDocRef, { following: newFollowedGames });
-                    batch.set(gameMetadataDocRef, { followerCount: increment(1) }, { merge: true });
-                    updateSuccess = true;
-                }
+                // MODIFIED: Use dot notation to update a field in the map
+                batch.update(userDocRef, { [`following.${gameId}`]: true });
+                batch.set(gameMetadataDocRef, { followerCount: increment(1) }, { merge: true });
+                updateSuccess = true;
+                
             } else if (action === 'unfollow') {
-                if (followedGames[gameId]) {
-                    delete newFollowedGames[gameId];
-                    batch.set(userDocRef, { following: newFollowedGames });
-                    batch.set(gameMetadataDocRef, { followerCount: increment(-1) }, { merge: true });
-                    updateSuccess = true;
-                }
+                // MODIFIED: Use dot notation and deleteField to remove a field from the map
+                batch.update(userDocRef, { [`following.${gameId}`]: deleteField() });
+                batch.set(gameMetadataDocRef, { followerCount: increment(-1) }, { merge: true });
+                updateSuccess = true;
             }
             
             if (updateSuccess) {
@@ -1938,11 +1990,12 @@
          */
         function clearFirestoreListeners() {
             if (unsubscribeGameMetadata) unsubscribeGameMetadata();
-            if (unsubscribeFollowedGames) unsubscribeFollowedGames();
+            // REMOVED: No longer a separate listener
+            // if (unsubscribeFollowedGames) unsubscribeFollowedGames();
             if (unsubscribeUserProfile) unsubscribeUserProfile();
             
             unsubscribeGameMetadata = null;
-            unsubscribeFollowedGames = null;
+            // unsubscribeFollowedGames = null;
             unsubscribeUserProfile = null;
             
             console.log("Cleared all persistent Firestore listeners.");
@@ -1979,7 +2032,8 @@
             
             // --- 2. PRIVATE/AUTH-ONLY LISTENERS ---
             if (!isUserAnonymous && currentUserId) {
-                // 2a. Private Followed Games
+                // 2a. Private Followed Games - REMOVED
+                /*
                 const userDocRef = getFollowedGamesDocRef(db, currentUserId);
                 if (userDocRef) {
                     unsubscribeFollowedGames = onSnapshot(userDocRef, (docSnap) => {
@@ -1999,8 +2053,9 @@
                         showMessageBox("Data Sync Error", "Failed to sync followed games data from the server.");
                     });
                 }
+                */
                 
-                // 2b. Public Profile (Nickname)
+                // 2b. Public Profile (Nickname AND Followed Games)
                 const profileDocRef = getUserPublicProfileDocRef(db, currentUserId);
                 unsubscribeUserProfile = onSnapshot(profileDocRef, (docSnap) => {
                     // NEW DEFAULT:
@@ -2010,9 +2065,16 @@
                     let newNickname = null;
                     let newNicknameDisplay = defaultNickname;
                     
-                    if (docSnap.exists() && docSnap.data().nickname) {
-                        newNickname = docSnap.data().nickname;
-                        newNicknameDisplay = newNickname;
+                    // MODIFIED: Get nickname AND followed games from the same doc
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        newNickname = data.nickname;
+                        newNicknameDisplay = newNickname || defaultNickname; // Use saved nickname or default
+                        followedGames = data.following || {}; // Get followed games from profile
+                        console.log("Followed games updated from public profile:", followedGames);
+                    } else {
+                        followedGames = {}; // No profile doc, no followed games
+                        console.log("No public profile found, followed games set to empty.");
                     }
                     
                     userNickname = newNickname; // Update global var
@@ -2027,6 +2089,12 @@
                     // Update Account View
                     document.getElementById('current-nickname-display-account').textContent = newNicknameDisplay;
                     document.getElementById('nickname-input-account').value = newNickname || '';
+                    
+                    // MODIFIED: Call render functions that depend on followedGames
+                    renderFollowedGames();
+                    if (!document.getElementById('scores-view').classList.contains('hidden')) {
+                        renderScores();
+                    }
 
                 }, (error) => {
                     console.error("Firestore onSnapshot (User Profile) error:", error);
@@ -2075,9 +2143,11 @@
                 const newUserId = userCredential.user.uid;
                 const emailPrefix = email.split('@')[0];
                 const profileDocRef = getUserPublicProfileDocRef(db, newUserId);
+                // MODIFIED: Add 'following: {}' on registration
                 await setDoc(profileDocRef, { 
                     nickname: emailPrefix,
-                    userId: newUserId 
+                    userId: newUserId,
+                    following: {} 
                 }, { merge: true });
                 
                 // onAuthStateChanged will handle the rest
@@ -2294,6 +2364,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 
