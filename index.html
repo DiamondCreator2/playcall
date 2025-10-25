@@ -76,7 +76,7 @@
     
     <!-- Header: Navigation and Logo -->
     <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-auto">
+        <div class="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-auto">
             
             <div class="flex items-center justify-between h-16">
                 
@@ -85,12 +85,12 @@
                     
                     <!-- Title/Logo -->
                     <div class="flex items-center flex-shrink-0">
-                        <span class="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                        <span class="text-2xl sm:text-4xl font-black tracking-tight text-white">
                             Play Call
                         </span>
                         
                         <span class="
-                            ml-3 
+                            ml-2 sm:ml-3 
                             bg-red-600 
                             text-white 
                             text-xs 
@@ -1892,7 +1892,7 @@
             const accountLinkMobile = document.getElementById('account-link-mobile'); // NEW
             const authStatusDiv = document.getElementById('auth-status');
             
-            authStatusDiv.classList.remove('hidden'); // Show the auth status area
+            // authStatusDiv.classList.remove('hidden'); // <-- FIX: This line was breaking the mobile layout. Removing it allows Tailwind's 'hidden sm:flex' to work correctly.
 
             if (user && !user.isAnonymous) {
                 // REAL USER
@@ -2294,5 +2294,6 @@
     </script>
 </body>
 </html>
+
 
 
