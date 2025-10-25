@@ -231,21 +231,7 @@
         <div id="dashboard-view" class="hidden px-4 py-4 sm:px-0 space-y-8">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Your Dashboard</h2>
             
-            <!-- NEW: Nickname Section -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-red-600">
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">Your Public Nickname</h3>
-                <p class="text-sm text-gray-600 mb-4">This name will appear on game leaderboards. Your User ID is: <code class="text-xs bg-gray-100 p-1 rounded-md" id="user-id-display">Loading...</code></p>
-                <div class="flex flex-col sm:flex-row gap-4 items-center">
-                    <div class="flex-grow w-full">
-                        <label for="nickname-input" class="block text-sm font-medium text-gray-700">Set Nickname</label>
-                        <input type="text" id="nickname-input" placeholder="Enter your nickname..." class="admin-input mt-1 w-full">
-                    </div>
-                    <button id="save-nickname-btn" class="w-full sm:w-auto bg-red-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-700 transition duration-150 shadow-md sm:self-end">
-                        Save
-                    </button>
-                </div>
-                <p class="text-sm text-gray-500 mt-3">Current Nickname: <span id="current-nickname-display" class="font-bold text-gray-700">Loading...</span></p>
-            </div>
+            <!-- User ID Display -- REMOVED -->
             
             <!-- Friend Activity Section (Mock) -->
             <div>
@@ -1354,20 +1340,16 @@
             
             // NEW: Determine which input to read from
             let newName = '';
-            const nicknameInputDashboard = document.getElementById('nickname-input');
+            // const nicknameInputDashboard = document.getElementById('nickname-input'); // No longer needed
             const nicknameInputAccount = document.getElementById('nickname-input-account');
 
-            if (event && event.target.id === 'save-nickname-btn-account') {
-                newName = nicknameInputAccount.value.trim();
-            } else {
-                newName = nicknameInputDashboard.value.trim();
-            }
+            // Only read from the account input
+            newName = nicknameInputAccount.value.trim();
             
             // If one field was used, update the other one to match
-            if (newName) {
-                nicknameInputDashboard.value = newName;
-                nicknameInputAccount.value = newName;
-            }
+            // if (newName) {
+            //     nicknameInputDashboard.value = newName; // No longer exists
+            // }
 
             if (newName.length < 3) {
                 showMessageBox("Nickname Too Short", "Your nickname must be at least 3 characters long.");
@@ -2021,7 +2003,10 @@
                 // 2b. Public Profile (Nickname)
                 const profileDocRef = getUserPublicProfileDocRef(db, currentUserId);
                 unsubscribeUserProfile = onSnapshot(profileDocRef, (docSnap) => {
-                    const defaultNickname = `User...${currentUserId.substring(currentUserId.length - 4)}`;
+                    // NEW DEFAULT:
+                    const emailPrefix = auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'User';
+                    const defaultNickname = emailPrefix; // Use email prefix as the base default
+                    
                     let newNickname = null;
                     let newNicknameDisplay = defaultNickname;
                     
@@ -2032,11 +2017,14 @@
                     
                     userNickname = newNickname; // Update global var
                     
-                    // Update Dashboard View
-                    document.getElementById('current-nickname-display').textContent = newNicknameDisplay;
-                    document.getElementById('nickname-input').value = newNickname || '';
+                    // NEW: Update welcome message here
+                    const welcome = document.getElementById('auth-welcome');
+                    const welcomeMobile = document.getElementById('auth-welcome-mobile');
+                    const welcomeMsg = `Welcome, ${newNicknameDisplay}`; 
+                    welcome.textContent = welcomeMsg;
+                    welcomeMobile.textContent = welcomeMsg;
 
-                    // NEW: Update Account View
+                    // Update Account View
                     document.getElementById('current-nickname-display-account').textContent = newNicknameDisplay;
                     document.getElementById('nickname-input-account').value = newNickname || '';
 
@@ -2081,7 +2069,17 @@
             }
             
             try {
-                await createUserWithEmailAndPassword(auth, email, password);
+                // await createUserWithEmailAndPassword(auth, email, password);
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                // NEW: After user is created, save their default nickname
+                const newUserId = userCredential.user.uid;
+                const emailPrefix = email.split('@')[0];
+                const profileDocRef = getUserPublicProfileDocRef(db, newUserId);
+                await setDoc(profileDocRef, { 
+                    nickname: emailPrefix,
+                    userId: newUserId 
+                }, { merge: true });
+                
                 // onAuthStateChanged will handle the rest
             } catch (error) {
                 console.error("Registration Error:", error);
@@ -2153,7 +2151,7 @@
                         updateAuthUI(user);
                         
                         // Display User ID on Dashboard & Account views
-                        document.getElementById('user-id-display').textContent = userId;
+                        // document.getElementById('user-id-display').textContent = userId; // REMOVED
                         document.getElementById('user-id-display-account').textContent = userId; // NEW
 
                         // Set up the correct listeners for this user
@@ -2197,7 +2195,7 @@
                 
                 // 3. Set up static listeners
                 document.getElementById('prompt-send-btn').addEventListener('click', handleNewPrompt);
-                document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname);
+                // document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname); // REMOVED
 
                 // START: NEW Admin listener for clearing leaderboard
                 document.getElementById('clear-leaderboard-btn').addEventListener('click', handleClearLeaderboard);
@@ -2296,3 +2294,5 @@
     </script>
 </body>
 </html>
+
+
