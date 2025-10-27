@@ -545,6 +545,7 @@
         let followedGames = {}; // PRIVATE: User's list of followed games
         let gameMetadata = {}; // PUBLIC: Real-time follower counts for all games
         let fetchErrorCount = 0;
+        let currentGameIdInDetailView = null; // NEW: Tracks the game in detail view
         
         // --- GLOBAL FIRESTORE UNSUBSCRIBE FUNCTIONS ---
         let unsubscribeGameMetadata = null; // NEW
@@ -702,13 +703,20 @@
             const home = competitors.find(c => c.homeAway === 'home');
             const away = competitors.find(c => c.homeAway === 'away');
             if (!home || !away) return null;
+
+            // --- START MODIFICATION ---
             let statusText = event.status.type.detail || event.status.type.shortDetail || 'Scheduled';
             const statusName = event.status.type.name;
+            const statusTextUpper = statusText.toUpperCase(); // Check for 'FINAL' or 'FT'
+
             let displayTime = '';
-            let gameStatus = 'Scheduled';
-            if (statusName === 'STATUS_FINAL' || statusName === 'STATUS_POSTPONED' || statusName === 'STATUS_CANCELLED') {
+            let gameStatus = 'Scheduled'; // Default
+            
+            // New, more robust check for "Final"
+            if (statusName === 'STATUS_FINAL' || statusName === 'STATUS_POSTPONED' || statusName === 'STATUS_CANCELLED' || statusName === 'STATUS_COMPLETED' || statusTextUpper.includes('FINAL') || statusTextUpper === 'FT') {
+            // --- END MODIFICATION ---
                 gameStatus = 'Final';
-            } else if (statusName === 'STATUS_IN_PROGRESS' || statusName === 'STATUS_HALFTIME' || statusName === 'STATUS_DELAYED') {
+            } else if (statusName === 'STATUS_IN_PROGRESS' || statusName === 'STATUS_HALFTIME' || statusName === 'STATUS_DELAYED' || statusName === 'STATUS_END_PERIOD') {
                 gameStatus = 'In Progress';
             } else {
                 gameStatus = 'Scheduled';
@@ -757,7 +765,7 @@
             }
         }
         
-        // ... (fetchEspnScores is unchanged)
+        // ... (fetchEspnScores is MODIFIED)
         async function fetchEspnScores() {
             let allGames = [];
             const datesToFetch = [
@@ -799,14 +807,47 @@
             }
             const uniqueGames = Array.from(new Map(allGames.map(game => [game.id, game])).values());
             fetchErrorCount = 0;
+            
+            // --- START MODIFICATION ---
             gamesData = uniqueGames;
             renderFollowedGames();
             renderScores();
             renderAdminPanel();
+
+            // NEW: Check if we are in detail view and update it
+            if (currentGameIdInDetailView && !document.getElementById('detail-view').classList.contains('hidden')) {
+                const updatedGame = gamesData.find(g => g.id === currentGameIdInDetailView);
+                if (updatedGame) {
+                    console.log(`Updating detail view for game: ${currentGameIdInDetailView}`);
+                    updateGameDetailView(updatedGame);
+                }
+            }
+            // --- END MODIFICATION ---
         }
 
 
         // --- UI Rendering Functions ---
+
+        /**
+         * NEW: Selectively updates the score/time in the detail view
+         * without re-rendering the whole component.
+         */
+        function updateGameDetailView(game) {
+            const awayScoreEl = document.getElementById('detail-away-score');
+            const homeScoreEl = document.getElementById('detail-home-score');
+            const timeEl = document.getElementById('detail-game-time');
+            const statusEl = document.getElementById('detail-game-status');
+
+            if (awayScoreEl) awayScoreEl.textContent = game.awayScore;
+            if (homeScoreEl) homeScoreEl.textContent = game.homeScore;
+            if (timeEl) {
+                timeEl.textContent = game.time;
+                // Update class based on status
+                timeEl.classList.remove('text-green-600', 'text-gray-500');
+                timeEl.classList.add(game.status === 'In Progress' ? 'text-green-600' : 'text-gray-500');
+            }
+            if (statusEl) statusEl.textContent = game.statusDetail;
+        }
         
         // ... (renderGameCardFeed is unchanged)
         function renderGameCardFeed(game, isFollowed) {
@@ -1710,15 +1751,21 @@
             }
         }
 
-        // ... (showGameDetail is MODIFIED, except for the query fix)
+        // ... (showGameDetail is MODIFIED)
         function showGameDetail(gameId) {
             const game = gamesData.find(g => g.id === gameId);
             if (!game) {
                 showMessageBox("Game Not Found", "The requested game detail could not be loaded.");
                 return;
             }
+            // --- START MODIFICATION ---
+            currentGameIdInDetailView = gameId; // NEW: Set the global tracker
+            // --- END MODIFICATION ---
+            
             switchView('detail');
             const detailContent = document.getElementById('detail-content');
+            
+            // --- START MODIFICATION: Added IDs to score and time elements ---
             detailContent.innerHTML = `
                 <div class="flex flex-col items-center text-center">
                     <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
@@ -1728,17 +1775,17 @@
                     <div class="flex space-x-8 items-center bg-gray-50 p-6 rounded-xl shadow-inner w-full max-w-lg">
                         <div class="flex-1">
                             <p class="text-xl font-semibold text-gray-600">${game.awayTeam}</p>
-                            <p class="text-6xl font-extrabold text-gray-900">${game.awayScore}</p>
+                            <p id="detail-away-score" class="text-6xl font-extrabold text-gray-900">${game.awayScore}</p>
                         </div>
                         <div class="text-center">
-                            <p class="text-lg font-bold ${game.status === 'In Progress' ? 'text-green-600' : 'text-gray-500'}">
+                            <p id="detail-game-time" class="text-lg font-bold ${game.status === 'In Progress' ? 'text-green-600' : 'text-gray-500'}">
                                 ${game.time}
                             </p>
-                            <p class="text-xs text-gray-500">${game.statusDetail}</p>
+                            <p id="detail-game-status" class="text-xs text-gray-500">${game.statusDetail}</p>
                         </div>
                         <div class="flex-1">
                             <p class="text-xl font-semibold text-gray-600">${game.homeTeam}</p>
-                            <p class="text-6xl font-extrabold text-gray-900">${game.homeScore}</p>
+                            <p id="detail-home-score" class="text-6xl font-extrabold text-gray-900">${game.homeScore}</p>
                         </div>
                     </div>
                     <div id="live-prompt-container" class="mt-6 p-4 border-l-4 rounded-lg shadow-inner w-full max-w-lg transition duration-300 bg-gray-50 border-gray-300">
@@ -1768,6 +1815,8 @@
                     </div>
                 </div>
             `;
+            // --- END MODIFICATION ---
+
             if (unsubscribePromptListener) {
                 unsubscribePromptListener();
                 unsubscribePromptListener = null;
@@ -1822,12 +1871,17 @@
                 unsubscribeLeaderboardListener(); 
             }
             const leaderboardColRef = getLeaderboardColRef(db, gameId);
-            const q_leaderboard = query(leaderboardColRef, orderBy('score', 'desc'));
+            // MODIFICATION: Removed orderBy to prevent index error
+            const q_leaderboard = query(leaderboardColRef); 
             unsubscribeLeaderboardListener = onSnapshot(q_leaderboard, (snapshot) => {
                 const players = [];
                 snapshot.forEach(doc => {
                     players.push({ id: doc.id, ...doc.data() });
                 });
+
+                // MODIFICATION: Sort in memory
+                players.sort((a, b) => (b.score || 0) - (a.score || 0));
+
                 const leaderboardList = document.getElementById('leaderboard-list');
                 if (snapshot.empty) {
                     leaderboardList.innerHTML = `<p class="text-center text-gray-500">No scores yet. Be the first to play!</p>`;
@@ -1918,6 +1972,7 @@
             document.getElementById('detail-view').classList.add('hidden');
             document.getElementById('account-view').classList.add('hidden'); // NEW
             
+            // --- START MODIFICATION ---
             // Cleanup listeners when switching away
             if (unsubscribePromptListener) {
                 unsubscribePromptListener();
@@ -1929,6 +1984,12 @@
                 unsubscribeLeaderboardListener = null;
                 console.log("Stopped leaderboard listener.");
             }
+            // NEW: Clear the detail view tracker when we leave the detail view
+            if (view !== 'detail') {
+                currentGameIdInDetailView = null;
+            }
+            // --- END MODIFICATION ---
+
             if (view !== 'admin' && unsubscribePromptsAdmin) {
                  unsubscribePromptsAdmin();
                  unsubscribePromptsAdmin = null;
@@ -2167,7 +2228,7 @@
 
                 }, (error) => {
                     console.error("Firestore onSnapshot (User Profile) error:", error);
-                    document.getElementById('current-nickname-display').textContent = "Error loading nickname.";
+                    // document.getElementById('current-nickname-display').textContent = "Error loading nickname."; // El removed
                     document.getElementById('current-nickname-display-account').textContent = "Error loading nickname."; // NEW
                 });
             } else {
@@ -2342,8 +2403,11 @@
 
                         // Fetch scores for everyone
                         fetchEspnScores();
+                        
+                        // --- START MODIFICATION ---
                         // Set up interval for refreshing scores
-                        setInterval(fetchEspnScores, 30000); 
+                        setInterval(fetchEspnScores, 15000); // Shortened interval to 15s
+                        // --- END MODIFICATION ---
                         
                         // Go to Dashboard if real user, Scores if guest
                         switchView(isAnonymous ? 'scores' : 'dashboard');
@@ -2481,3 +2545,6 @@
     </script>
 </body>
 </html>
+
+
+
