@@ -73,6 +73,35 @@
             </div>
         </div>
     </div>
+
+    <!-- START: NEW Add Friend Modal -->
+    <div id="add-friend-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300">
+        <div class="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Find Friends</h3>
+                <button id="add-friend-close-btn" class="text-gray-400 hover:text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <p class="text-gray-600 mb-4 text-sm">Search for other users by their exact public nickname to send a friend request.</p>
+
+            <div class="flex space-x-2">
+                <input type="text" id="friend-search-input" placeholder="Enter exact nickname..." class="admin-input flex-grow">
+                <button id="friend-search-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-150 text-sm font-semibold">
+                    Search
+                </button>
+            </div>
+
+            <div id="friend-search-results-container" class="mt-4 space-y-2 max-h-60 overflow-y-auto">
+                <!-- Search results will be injected here -->
+                <p id="friend-search-placeholder" class="text-center text-gray-500 p-4">Search results will appear here.</p>
+            </div>
+        </div>
+    </div>
+    <!-- END: NEW Add Friend Modal -->
     
     <!-- Header: Navigation and Logo -->
     <header class="fixed top-0 left-0 w-full bg-gray-900 text-white shadow-xl z-50">
@@ -271,7 +300,18 @@
             
             <!-- Friend Activity Section (Mock) -->
             <div>
-                <h3 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Friend Activity (Mock)</h3>
+                <!-- START: MODIFIED Header -->
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h3 class="text-2xl font-bold text-gray-800">Friend Activity (Mock)</h3>
+                    <button id="add-friend-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-150 text-sm font-semibold flex items-center space-x-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-7-8a7 7 0 1114 0 7 7 0 01-14 0z" clip-rule="evenodd" />
+                        </svg>
+                        <span>Add Friend</span>
+                    </button>
+                </div>
+                <!-- END: MODIFIED Header -->
                 <div id="friend-activity-list">
                     <!-- Friend activity list will be injected here -->
                 </div>
@@ -423,7 +463,7 @@
         </div>
 
         <!-- NEW: Account Settings View -->
-        <div id="account-view" class_name="hidden px-4 py-4 sm:px-0 space-y-8">
+        <div id="account-view" class="hidden px-4 py-4 sm:px-0 space-y-8">
             <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Account Settings</h2>
             
             <!-- Nickname Section -->
@@ -441,6 +481,17 @@
                 </div>
                 <p class="text-sm text-gray-500 mt-3">Current Nickname: <span id="current-nickname-display-account" class="font-bold text-gray-700">Loading...</span></p>
             </div>
+
+            <!-- START: NEW Friends & Requests Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-600">
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Friend Requests</h3>
+                <p class="text-sm text-gray-600 mb-4">Manage your incoming friend requests.</p>
+                <div id="friend-requests-container" class="space-y-3">
+                    <p id="friend-requests-loading" class="text-center text-gray-500">Loading requests...</p>
+                    <!-- Friend requests will be injected here -->
+                </div>
+            </div>
+            <!-- END: NEW Friends & Requests Section -->
 
             <!-- Change Password Section -->
             <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-gray-300">
@@ -489,8 +540,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         // MODIFIED: Added GoogleAuthProvider, signInWithPopup, getAdditionalUserInfo
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser, setPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithPopup, getAdditionalUserInfo } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // MODIFIED: Added deleteField
-        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // MODIFIED: Added deleteField, limit
+        import { getFirestore, doc, setDoc, onSnapshot, collection, increment, writeBatch, FieldValue, query, where, updateDoc, addDoc, getDocs, getDoc, deleteDoc, orderBy, deleteField, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Use Debug logging for better visibility in the console
@@ -551,6 +602,7 @@
         let unsubscribeGameMetadata = null; // NEW
         let unsubscribeFollowedGames = null; // NEW - This will be removed
         let unsubscribeUserProfile = null; // NEW (was already global, just clarifying)
+        let unsubscribeFriendRequests = null; // NEW
         
         let unsubscribePromptListener = null; 
         let unsubscribePromptsAdmin = null; 
@@ -649,6 +701,23 @@
                 return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'user_profiles');
             }
         }
+        // START: NEW Friend Subcollection Helpers
+        function getFriendRequestsColRef(dbInstance, currentUserId) {
+            if (!dbInstance || !currentUserId) return null;
+            const profileDocRef = getUserPublicProfileDocRef(dbInstance, currentUserId);
+            return collection(profileDocRef, 'friend_requests');
+        }
+        function getSentRequestsColRef(dbInstance, currentUserId) {
+            if (!dbInstance || !currentUserId) return null;
+            const profileDocRef = getUserPublicProfileDocRef(dbInstance, currentUserId);
+            return collection(profileDocRef, 'sent_requests');
+        }
+        function getFriendsColRef(dbInstance, currentUserId) {
+            if (!dbInstance || !currentUserId) return null;
+            const profileDocRef = getUserPublicProfileDocRef(dbInstance, currentUserId);
+            return collection(profileDocRef, 'friends');
+        }
+        // END: NEW Friend Subcollection Helpers
         function getGameMetadataColRef(dbInstance) {
             if (!dbInstance) return null;
             if (appId === 'default-app-id') {
@@ -1613,6 +1682,163 @@
             }
         }
 
+        // --- START: NEW Friend Management Functions ---
+        
+        /**
+         * Opens the "Add Friend" modal.
+         */
+        function openAddFriendModal() {
+            if (isAnonymous) {
+                showMessageBox("Login Required", "Please create an account or log in to add friends.");
+                return;
+            }
+            document.getElementById('friend-search-input').value = '';
+            document.getElementById('friend-search-results-container').innerHTML = 
+                `<p id="friend-search-placeholder" class="text-center text-gray-500 p-4">Search results will appear here.</p>`;
+            document.getElementById('add-friend-modal').classList.remove('hidden');
+        }
+
+        /**
+         * Closes the "Add Friend" modal.
+         */
+        function closeAddFriendModal() {
+            document.getElementById('add-friend-modal').classList.add('hidden');
+        }
+
+        /**
+         * Searches for users by nickname.
+         */
+        async function handleSearchFriends() {
+            const searchInput = document.getElementById('friend-search-input').value.trim();
+            const resultsContainer = document.getElementById('friend-search-results-container');
+
+            if (searchInput.length < 3) {
+                resultsContainer.innerHTML = `<p class="text-center text-red-500 p-4">Please enter at least 3 characters.</p>`;
+                return;
+            }
+            if (!userId || isAnonymous) {
+                showMessageBox("Error", "You must be logged in to search.");
+                return;
+            }
+            
+            // Show loading state
+            resultsContainer.innerHTML = `<p class="text-center text-gray-500 p-4">Searching...</p>`;
+
+            try {
+                const profilesColRef = getUserPublicProfileColRef(db);
+                // Query for exact match on nickname
+                const q = query(profilesColRef, where("nickname", "==", searchInput), limit(10));
+                const querySnapshot = await getDocs(q);
+
+                if (querySnapshot.empty) {
+                    resultsContainer.innerHTML = `<p class="text-center text-gray-500 p-4">No users found with that exact nickname. Please check the spelling.</p>`;
+                    return;
+                }
+
+                let resultsHtml = '';
+                querySnapshot.forEach(doc => {
+                    const profile = doc.data();
+                    // Don't show the user their own profile in search results
+                    if (profile.userId === userId) {
+                        return;
+                    }
+
+                    resultsHtml += `
+                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                            <span class="font-semibold text-gray-800">${profile.nickname}</span>
+                            <button 
+                                data-recipient-id="${profile.userId}" 
+                                data-recipient-nickname="${profile.nickname}"
+                                class="send-friend-request-btn bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600 transition duration-150 text-sm font-semibold">
+                                Send Request
+                            </button>
+                        </div>
+                    `;
+                });
+
+                if (resultsHtml === '') {
+                    resultsContainer.innerHTML = `<p class="text-center text-gray-500 p-4">No other users found with that nickname.</p>`;
+                } else {
+                    resultsContainer.innerHTML = resultsHtml;
+                    // Add listeners to the new buttons
+                    document.querySelectorAll('.send-friend-request-btn').forEach(btn => {
+                        btn.addEventListener('click', handleSendFriendRequest);
+                    });
+                }
+            } catch (error) {
+                console.error("Error searching for friends:", error);
+                resultsContainer.innerHTML = `<p class="text-center text-red-500 p-4">An error occurred while searching. You may need to create a Firestore Index.</p>`;
+                showMessageBox("Search Error", "Search failed. This feature may require a Firestore Index on 'nickname' in the 'public_user_profiles' collection.");
+            }
+        }
+
+        /**
+         * Sends a friend request to a user.
+         */
+        async function handleSendFriendRequest(e) {
+            const button = e.currentTarget;
+            const recipientId = button.dataset.recipientId;
+            const recipientNickname = button.dataset.recipientNickname;
+
+            if (!userId || isAnonymous || !userNickname) {
+                showMessageBox("Error", "You must be logged in and have a nickname to send requests.");
+                return;
+            }
+            if (recipientId === userId) {
+                showMessageBox("Error", "You cannot send a friend request to yourself.");
+                return;
+            }
+
+            // Disable button to prevent double-sends
+            button.disabled = true;
+            button.textContent = 'Sending...';
+            button.classList.remove('bg-green-500', 'hover:bg-green-600');
+            button.classList.add('bg-gray-400', 'cursor-not-allowed');
+
+            try {
+                const batch = writeBatch(db);
+                const timestamp = new Date().toISOString();
+                
+                // 1. Create the INCOMING request doc for the RECIPIENT
+                const incomingRequestRef = doc(getFriendRequestsColRef(db, recipientId), userId);
+                batch.set(incomingRequestRef, {
+                    senderId: userId,
+                    senderNickname: userNickname,
+                    status: "pending",
+                    createdAt: timestamp
+                });
+
+                // 2. Create the OUTGOING request doc for the SENDER
+                const outgoingRequestRef = doc(getSentRequestsColRef(db, userId), recipientId);
+                batch.set(outgoingRequestRef, {
+                    recipientId: recipientId,
+                    recipientNickname: recipientNickname,
+                    status: "pending",
+                    createdAt: timestamp
+                });
+
+                await batch.commit();
+
+                // Update UI to show success
+                button.textContent = 'Sent!';
+                button.classList.remove('bg-gray-400');
+                button.classList.add('bg-blue-500');
+                
+                showMessageBox("Success", `Friend request sent to ${recipientNickname}!`);
+
+            } catch (error) {
+                console.error("Error sending friend request:", error);
+                showMessageBox("Error", `Failed to send request. Error: ${error.message}`);
+                // Re-enable button on failure
+                button.disabled = false;
+                button.textContent = 'Send Request';
+                button.classList.add('bg-green-500', 'hover:bg-green-600');
+                button.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            }
+        }
+
+        // --- END: NEW Friend Management Functions ---
+
 
         // --- Filter and UI Helper Functions ---
         
@@ -1996,6 +2222,14 @@
                  console.log("Stopped admin prompt listener.");
             }
 
+            // START: NEW: Clear friend request listener if not on account page
+            if (view !== 'account' && unsubscribeFriendRequests) {
+                unsubscribeFriendRequests();
+                unsubscribeFriendRequests = null;
+                console.log("Stopped friend request listener.");
+            }
+            // END: NEW
+
             // Show the selected view
             let highlightedView = view;
             if (view === 'auth') {
@@ -2031,6 +2265,11 @@
                 }
             } else if (view === 'account') { // NEW
                 document.getElementById('account-view').classList.remove('hidden');
+                // START: NEW: Attach friend request listener
+                if (!isAnonymous && userId) {
+                    setupFriendRequestListener(userId);
+                }
+                // END: NEW
             }
 
 
@@ -2080,7 +2319,8 @@
                 // REAL USER
                 // FIX: Check if user.email exists before splitting
                 const emailShort = user.email ? user.email.split('@')[0] : 'User';
-                const welcomeMsg = `Welcome, ${emailShort}`;
+                // MODIFIED: This will be updated again by the profile listener, but set a good default.
+                const welcomeMsg = userNickname ? `Welcome, ${userNickname}` : `Welcome, ${emailShort}`;
                 welcome.textContent = welcomeMsg;
                 welcomeMobile.textContent = welcomeMsg;
                 actionBtn.textContent = 'Sign Out';
@@ -2123,12 +2363,75 @@
             // REMOVED: No longer a separate listener
             // if (unsubscribeFollowedGames) unsubscribeFollowedGames();
             if (unsubscribeUserProfile) unsubscribeUserProfile();
+            if (unsubscribeFriendRequests) unsubscribeFriendRequests(); // NEW
             
             unsubscribeGameMetadata = null;
             // unsubscribeFollowedGames = null;
             unsubscribeUserProfile = null;
+            unsubscribeFriendRequests = null; // NEW
             
             console.log("Cleared all persistent Firestore listeners.");
+        }
+
+        /**
+         * NEW: Sets up a listener for incoming friend requests.
+         * This is called from switchView('account')
+         */
+        function setupFriendRequestListener(currentUserId) {
+            if (unsubscribeFriendRequests) {
+                unsubscribeFriendRequests(); // Clear old one if it exists
+            }
+            const requestsColRef = getFriendRequestsColRef(db, currentUserId);
+            const q = query(requestsColRef, where("status", "==", "pending"));
+            
+            unsubscribeFriendRequests = onSnapshot(q, (snapshot) => {
+                const container = document.getElementById('friend-requests-container');
+                if (snapshot.empty) {
+                    container.innerHTML = `<p class="text-center text-gray-500">You have no pending friend requests.</p>`;
+                    return;
+                }
+                
+                let requestsHtml = '';
+                snapshot.forEach(doc => {
+                    const request = doc.data();
+                    requestsHtml += `
+                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                            <div>
+                                <span class="font-semibold text-gray-800">${request.senderNickname}</span>
+                                <span class="text-sm text-gray-500 ml-2">(ID: ...${request.senderId.slice(-4)})</span>
+                            </div>
+                            <div class="space-x-2">
+                                <button data-sender-id="${request.senderId}" data-sender-nickname="${request.senderNickname}" class="accept-friend-btn bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600 transition duration-150 text-sm font-semibold">
+                                    Accept
+                                </button>
+                                <button data-sender-id="${request.senderId}" class="decline-friend-btn bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-600 transition duration-150 text-sm font-semibold">
+                                    Decline
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = requestsHtml;
+
+                // Add event listeners (logic to be added later)
+                document.querySelectorAll('.accept-friend-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        showMessageBox("Not Implemented", "Accepting friends is coming soon!");
+                        // TODO: Implement handleAcceptFriendRequest
+                    });
+                });
+                document.querySelectorAll('.decline-friend-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        showMessageBox("Not Implemented", "Declining friends is coming soon!");
+                        // TODO: Implement handleDeclineFriendRequest
+                    });
+                });
+
+            }, (error) => {
+                console.error("Error listening to friend requests:", error);
+                document.getElementById('friend-requests-container').innerHTML = 
+                    `<p class="text-center text-red-500">Error loading friend requests.</p>`;
+            });
         }
         
         /**
@@ -2207,7 +2510,7 @@
                         console.log("No public profile found, followed games set to empty.");
                     }
                     
-                    userNickname = newNickname; // Update global var
+                    userNickname = newNickname || defaultNickname; // MODIFIED: Ensure userNickname is never null for logged-in users
                     
                     // NEW: Update welcome message here
                     const welcome = document.getElementById('auth-welcome');
@@ -2277,7 +2580,7 @@
                 await setDoc(profileDocRef, { 
                     nickname: emailPrefix,
                     userId: newUserId,
-                    following: {} 
+                    following: {} // NEW: Initialize the following map
                 }, { merge: true });
                 
                 // onAuthStateChanged will handle the rest
@@ -2309,7 +2612,7 @@
                     await setDoc(profileDocRef, { 
                         nickname: emailPrefix,
                         userId: newUserId,
-                        following: {} 
+                        following: {} // NEW: Initialize the following map
                     }, { merge: true });
                 } else {
                     console.log("Returning user signed in with Google:", user.uid);
@@ -2459,6 +2762,12 @@
                     );
                 });
 
+                // START: NEW Friend Modal Listeners
+                document.getElementById('add-friend-btn').addEventListener('click', openAddFriendModal);
+                document.getElementById('add-friend-close-btn').addEventListener('click', closeAddFriendModal);
+                document.getElementById('friend-search-btn').addEventListener('click', handleSearchFriends);
+                // END: NEW Friend Modal Listeners
+
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
                 showMessageBox("Initialization Failed", `Could not connect to the cloud service. Error: ${error.message}`);
@@ -2545,6 +2854,3 @@
     </script>
 </body>
 </html>
-
-
-
