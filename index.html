@@ -40,6 +40,32 @@
             max-width: 400px;
             text-align: center;
         }
+
+        /* --- START: NEW Notification Badge Style --- */
+        .notification-badge {
+            /* @apply absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-gray-900; */
+            
+            /* --- START: Plain CSS Fallback --- */
+            /* Replaced @apply with plain CSS for maximum compatibility, as @apply might not be processed correctly by the CDN script in all environments. */
+            position: absolute;
+            top: -0.5rem;
+            right: -0.5rem;
+            background-color: #DC2626; /* red-600 */
+            color: #ffffff;
+            font-size: 0.75rem; /* text-xs */
+            line-height: 1rem;
+            font-weight: 700; /* font-bold */
+            width: 1.25rem; /* w-5 */
+            height: 1.25rem; /* h-5 */
+            border-radius: 9999px; /* rounded-full */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-width: 2px;
+            border-color: #111827; /* gray-900 */
+            /* --- END: Plain CSS Fallback --- */
+        }
+        /* --- END: NEW Notification Badge Style --- */
         
     </style>
 </head>
@@ -85,6 +111,17 @@
                     </svg>
                 </button>
             </div>
+
+            <!-- START: MOVED Friends & Requests Section -->
+            <div class="mb-6 border-b pb-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-2">Friend Requests</h3>
+                <p class="text-sm text-gray-600 mb-4">Manage your incoming friend requests here.</p>
+                <div id="friend-requests-container" class="space-y-3 max-h-48 overflow-y-auto">
+                    <p id="friend-requests-loading" class="text-center text-gray-500">Loading requests...</p>
+                    <!-- Friend requests will be injected here -->
+                </div>
+            </div>
+            <!-- END: MOVED Friends & Requests Section -->
             
             <p class="text-gray-600 mb-4 text-sm">Search for other users by their exact public nickname to send a friend request.</p>
 
@@ -153,10 +190,12 @@
                         <a href="#" id="admin-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
                             Admin Panel
                         </a>
-                        <!-- NEW ACCOUNT LINK -->
+                        <!-- START: MODIFIED ACCOUNT LINK -->
                         <a href="#" id="account-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
                             Account
+                            <!-- REMOVED BADGE SPAN -->
                         </a>
+                        <!-- END: MODIFIED ACCOUNT LINK -->
                     </nav>
 
                 </div>
@@ -187,8 +226,12 @@
                 <a href="#" id="dashboard-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-red-400 hover:bg-gray-700 hover:text-red-400 transition duration-150">Dashboard</a>
     		    <a href="#" id="scores-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Live Scores</a>
     		    <a href="#" id="admin-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Admin Panel</a>
-                <!-- NEW ACCOUNT LINK -->
-                <a href="#" id="account-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">Account</a>
+                <!-- START: MODIFIED ACCOUNT LINK (MOBILE) -->
+                <a href="#" id="account-link-mobile" class="nav-link-mobile block py-2 px-3 rounded-md text-base font-medium text-white hover:bg-gray-700 hover:text-red-400 transition duration-150">
+                    Account
+                    <!-- REMOVED BADGE SPAN -->
+                </a>
+                <!-- END: MODIFIED ACCOUNT LINK (MOBILE) -->
                 
                 <!-- NEW: Auth Status for Mobile -->
                 <div id="auth-status-mobile" class="px-3 pt-4 pb-2 border-t border-gray-700">
@@ -303,13 +346,16 @@
                 <!-- START: MODIFIED Header -->
                 <div class="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 class="text-2xl font-bold text-gray-800">Friend Activity (Mock)</h3>
-                    <button id="add-friend-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-150 text-sm font-semibold flex items-center space-x-2">
+                    <!-- START: MODIFIED Add Friend Button -->
+                    <button id="add-friend-btn" class="relative bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-150 text-sm font-semibold flex items-center space-x-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-7-8a7 7 0 1114 0 7 7 0 01-14 0z" clip-rule="evenodd" />
                         </svg>
                         <span>Add Friend</span>
+                        <span id="dashboard-requests-badge" class="notification-badge hidden"></span>
                     </button>
+                    <!-- END: MODIFIED Add Friend Button -->
                 </div>
                 <!-- END: MODIFIED Header -->
                 <div id="friend-activity-list">
@@ -480,21 +526,14 @@
                     </button>
                 </div>
                 <p class="text-sm text-gray-500 mt-3">Current Nickname: <span id="current-nickname-display-account" class="font-bold text-gray-700">Loading...</span></p>
-            </div>
+    </div>
 
-            <!-- START: NEW Friends & Requests Section -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-600">
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">Friend Requests</h3>
-                <p class="text-sm text-gray-600 mb-4">Manage your incoming friend requests.</p>
-                <div id="friend-requests-container" class="space-y-3">
-                    <p id="friend-requests-loading" class="text-center text-gray-500">Loading requests...</p>
-                    <!-- Friend requests will be injected here -->
-                </div>
-            </div>
-            <!-- END: NEW Friends & Requests Section -->
+    <!-- START: NEW Friends & Requests Section -->
+    <!-- MOVED: This section was moved to the #add-friend-modal -->
+    <!-- END: NEW Friends & Requests Section -->
 
-            <!-- Change Password Section -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-gray-300">
+    <!-- Change Password Section -->
+    <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-gray-300">
                 <h3 class="text-2xl font-bold text-gray-800 mb-2">Change Password</h3>
                 <p class="text-sm text-gray-600 mb-4">Update your account password. You will be logged out after a successful change.</p>
                 <div class="space-y-4 max-w-md">
@@ -1837,6 +1876,104 @@
             }
         }
 
+        /**
+         * START: NEW Accept Friend Request
+         */
+        async function handleAcceptFriendRequest(e) {
+            const button = e.currentTarget;
+            const senderId = button.dataset.senderId;
+            const senderNickname = button.dataset.senderNickname;
+
+            const recipientId = userId;
+            const recipientNickname = userNickname; // This is our (the user's) nickname
+
+            if (!recipientId || !recipientNickname) {
+                showMessageBox("Error", "Your user information is not loaded. Cannot accept request.");
+                return;
+            }
+
+            // Disable both buttons
+            button.disabled = true;
+            const declineButton = button.nextElementSibling;
+            if (declineButton) declineButton.disabled = true;
+
+            const batch = writeBatch(db);
+            const timestamp = new Date().toISOString();
+
+            try {
+                // 1. Delete the incoming request (on our/recipient's side)
+                const incomingRequestRef = doc(getFriendRequestsColRef(db, recipientId), senderId);
+                batch.delete(incomingRequestRef);
+
+                // 2. Delete the outgoing request (on sender's side)
+                const outgoingRequestRef = doc(getSentRequestsColRef(db, senderId), recipientId);
+                batch.delete(outgoingRequestRef);
+
+                // 3. Create friend doc (on our/recipient's side)
+                const recipientFriendRef = doc(getFriendsColRef(db, recipientId), senderId);
+                batch.set(recipientFriendRef, { 
+                    friendId: senderId, 
+                    friendNickname: senderNickname, 
+                    addedAt: timestamp 
+                });
+
+                // 4. Create friend doc (on sender's side)
+                const senderFriendRef = doc(getFriendsColRef(db, senderId), recipientId);
+                batch.set(senderFriendRef, { 
+                    friendId: recipientId, 
+                    friendNickname: recipientNickname, 
+                    addedAt: timestamp 
+                });
+
+                await batch.commit();
+                showMessageBox("Friend Added", `You are now friends with ${senderNickname}!`);
+                // The onSnapshot listener will automatically remove the request from the UI
+
+            } catch (error) {
+                console.error("Error accepting friend request:", error);
+                showMessageBox("Error", `Failed to accept friend request. Error: ${error.message}`);
+                // Re-enable buttons on failure
+                button.disabled = false;
+                if (declineButton) declineButton.disabled = false;
+            }
+        }
+
+        /**
+         * START: NEW Decline Friend Request
+         */
+        async function handleDeclineFriendRequest(e) {
+            const button = e.currentTarget;
+            const senderId = button.dataset.senderId;
+            const recipientId = userId;
+
+            // Disable both buttons
+            button.disabled = true;
+            const acceptButton = button.previousElementSibling;
+            if (acceptButton) acceptButton.disabled = true;
+
+            const batch = writeBatch(db);
+
+            try {
+                // 1. Delete the incoming request (on our/recipient's side)
+                const incomingRequestRef = doc(getFriendRequestsColRef(db, recipientId), senderId);
+                batch.delete(incomingRequestRef);
+
+                // 2. Delete the outgoing request (on sender's side)
+                const outgoingRequestRef = doc(getSentRequestsColRef(db, senderId), recipientId);
+                batch.delete(outgoingRequestRef);
+
+                await batch.commit();
+                showMessageBox("Request Declined", "The friend request has been declined.");
+                // The onSnapshot listener will automatically remove the request from the UI
+
+            } catch (error) {
+                console.error("Error declining friend request:", error);
+                showMessageBox("Error", `Failed to decline request. Error: ${error.message}`);
+                // Re-enable buttons on failure
+                button.disabled = false;
+                if (acceptButton) acceptButton.disabled = false;
+            }
+        }
         // --- END: NEW Friend Management Functions ---
 
 
@@ -2223,11 +2360,14 @@
             }
 
             // START: NEW: Clear friend request listener if not on account page
+            // MOVED: This logic is now handled in setupFirestoreListeners
+            /*
             if (view !== 'account' && unsubscribeFriendRequests) {
                 unsubscribeFriendRequests();
                 unsubscribeFriendRequests = null;
                 console.log("Stopped friend request listener.");
             }
+            */
             // END: NEW
 
             // Show the selected view
@@ -2266,9 +2406,12 @@
             } else if (view === 'account') { // NEW
                 document.getElementById('account-view').classList.remove('hidden');
                 // START: NEW: Attach friend request listener
+                // MOVED: This logic is now in setupFirestoreListeners
+                /*
                 if (!isAnonymous && userId) {
                     setupFriendRequestListener(userId);
                 }
+                */
                 // END: NEW
             }
 
@@ -2386,6 +2529,37 @@
             
             unsubscribeFriendRequests = onSnapshot(q, (snapshot) => {
                 const container = document.getElementById('friend-requests-container');
+                
+                // --- START: NEW Badge Logic ---
+                const requestCount = snapshot.size;
+                // REMOVED: References to account badges
+                // const badge1 = document.getElementById('account-requests-badge');
+                // const badge2 = document.getElementById('account-requests-badge-mobile');
+                const badge3 = document.getElementById('dashboard-requests-badge');
+                
+                // MODIFIED: Only update the dashboard badge
+                if (badge3) {
+                    if (requestCount > 0) {
+                        badge3.textContent = requestCount;
+                        badge3.classList.remove('hidden');
+                    } else {
+                        badge3.classList.add('hidden');
+                    }
+                }
+                /* REMOVED: Loop for account badges
+                [badge1, badge2, badge3].forEach(badge => {
+                    if (badge) {
+                        if (requestCount > 0) {
+                            badge.textContent = requestCount;
+                            badge.classList.remove('hidden');
+                        } else {
+                            badge.classList.add('hidden');
+                        }
+                    }
+                });
+                */
+                // --- END: NEW Badge Logic ---
+
                 if (snapshot.empty) {
                     container.innerHTML = `<p class="text-center text-gray-500">You have no pending friend requests.</p>`;
                     return;
@@ -2413,19 +2587,14 @@
                 });
                 container.innerHTML = requestsHtml;
 
-                // Add event listeners (logic to be added later)
+                // --- START: MODIFIED: Add event listeners for new functions ---
                 document.querySelectorAll('.accept-friend-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        showMessageBox("Not Implemented", "Accepting friends is coming soon!");
-                        // TODO: Implement handleAcceptFriendRequest
-                    });
+                    btn.addEventListener('click', handleAcceptFriendRequest);
                 });
                 document.querySelectorAll('.decline-friend-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        showMessageBox("Not Implemented", "Declining friends is coming soon!");
-                        // TODO: Implement handleDeclineFriendRequest
-                    });
+                    btn.addEventListener('click', handleDeclineFriendRequest);
                 });
+                // --- END: MODIFIED ---
 
             }, (error) => {
                 console.error("Error listening to friend requests:", error);
@@ -2466,27 +2635,6 @@
             // --- 2. PRIVATE/AUTH-ONLY LISTENERS ---
             if (!isUserAnonymous && currentUserId) {
                 // 2a. Private Followed Games - REMOVED
-                /*
-                const userDocRef = getFollowedGamesDocRef(db, currentUserId);
-                if (userDocRef) {
-                    unsubscribeFollowedGames = onSnapshot(userDocRef, (docSnap) => {
-                        if (docSnap.exists() && docSnap.data().following) {
-                            followedGames = docSnap.data().following;
-                            console.log("Followed games updated from private Firestore:", followedGames);
-                        } else {
-                            followedGames = {}; 
-                            console.log("No private followed games found, initialized to empty.");
-                        }
-                        renderFollowedGames();
-                        if (!document.getElementById('scores-view').classList.contains('hidden')) {
-                            renderScores();
-                        }
-                    }, (error) => {
-                        console.error("Firestore onSnapshot (Private) error:", error);
-                        showMessageBox("Data Sync Error", "Failed to sync followed games data from the server.");
-                    });
-                }
-                */
                 
                 // 2b. Public Profile (Nickname AND Followed Games)
                 const profileDocRef = getUserPublicProfileDocRef(db, currentUserId);
@@ -2534,10 +2682,31 @@
                     // document.getElementById('current-nickname-display').textContent = "Error loading nickname."; // El removed
                     document.getElementById('current-nickname-display-account').textContent = "Error loading nickname."; // NEW
                 });
+
+                // --- START: NEW Friend Request Listener ---
+                // Moved from switchView() to here, so it's always active for logged-in users
+                setupFriendRequestListener(currentUserId);
+                // --- END: NEW Friend Request Listener ---
+
             } else {
                 // Is anonymous, clear any potentially stale private data
                 followedGames = {};
                 userNickname = null;
+                // --- START: NEW: Clear badges for anonymous users ---
+                // REMOVED: References to account badges
+                /*
+                [
+                    document.getElementById('account-requests-badge'),
+                    document.getElementById('account-requests-badge-mobile'),
+                    document.getElementById('dashboard-requests-badge')
+                ].forEach(badge => {
+                    if (badge) badge.classList.add('hidden');
+                });
+                */
+                // MODIFIED: Only clear dashboard badge
+                const dashboardBadge = document.getElementById('dashboard-requests-badge');
+                if (dashboardBadge) dashboardBadge.classList.add('hidden');
+                // --- END: NEW ---
             }
         }
         
@@ -2854,3 +3023,7 @@
     </script>
 </body>
 </html>
+
+
+
+
