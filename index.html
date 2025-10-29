@@ -1902,6 +1902,10 @@
                 button.classList.remove('bg-gray-400');
                 button.classList.add('bg-blue-500');
                 
+                // --- START: MODIFICATION ---
+                // Close the modal on success before showing the message
+                closeAddFriendModal();
+                // --- END: MODIFICATION ---
                 showMessageBox("Success", `Friend request sent to ${recipientNickname}!`);
 
             } catch (error) {
@@ -1965,6 +1969,11 @@
                 });
 
                 await batch.commit();
+                
+                // --- START: MODIFICATION ---
+                // Close the modal on success before showing the message
+                closeAddFriendModal();
+                // --- END: MODIFICATION ---
                 showMessageBox("Friend Added", `You are now friends with ${senderNickname}!`);
                 // The onSnapshot listener will automatically remove the request from the UI
 
@@ -2002,6 +2011,11 @@
                 batch.delete(outgoingRequestRef);
 
                 await batch.commit();
+                
+                // --- START: MODIFICATION ---
+                // Close the modal on success before showing the message
+                closeAddFriendModal();
+                // --- END: MODIFICATION ---
                 showMessageBox("Request Declined", "The friend request has been declined.");
                 // The onSnapshot listener will automatically remove the request from the UI
 
@@ -2013,6 +2027,63 @@
                 if (acceptButton) acceptButton.disabled = false;
             }
         }
+        
+        /**
+         * START: NEW Remove Friend
+         */
+        async function handleRemoveFriend(e) {
+            const button = e.currentTarget;
+            const friendId = button.dataset.friendId;
+            const friendNickname = button.dataset.friendNickname;
+            const currentUserId = userId; // Our ID
+
+            if (!currentUserId || !friendId) {
+                showMessageBox("Error", "User or friend information is missing. Cannot remove friend.");
+                return;
+            }
+
+            // --- START: MODIFICATION ---
+            // Close the modal *before* showing the confirmation box
+            closeAddFriendModal();
+            // --- END: MODIFICATION ---
+
+            // Show confirmation
+            showConfirmBox(
+                "Remove Friend",
+                `Are you sure you want to remove ${friendNickname} from your friends list? This action will remove you from their list as well.`,
+                async () => {
+                    // This code runs if the user clicks "Confirm"
+                    button.disabled = true;
+                    button.textContent = 'Removing...';
+                    
+                    const batch = writeBatch(db);
+
+                    try {
+                        // 1. Delete friend from our (current user's) list
+                        const ourFriendRef = doc(getFriendsColRef(db, currentUserId), friendId);
+                        batch.delete(ourFriendRef);
+                        
+                        // 2. Delete us from their (the friend's) list
+                        const theirFriendRef = doc(getFriendsColRef(db, friendId), currentUserId);
+                        batch.delete(theirFriendRef);
+
+                        await batch.commit();
+                        
+                        showMessageBox("Friend Removed", `You are no longer friends with ${friendNickname}.`);
+                        // The onSnapshot listener for the friends list will automatically update the UI.
+                        
+                    } catch (error) {
+                        console.error("Error removing friend:", error);
+                        showMessageBox("Error", `Failed to remove friend. Error: ${error.message}`);
+                        // Re-enable button on failure
+                        button.disabled = false;
+                        button.textContent = 'Remove';
+                    }
+                }
+            );
+        }
+        // --- END: NEW Remove Friend ---
+        
         // --- END: NEW Friend Management Functions ---
 
         // --- START: NEW Render Friends List Function ---
@@ -2038,13 +2109,23 @@
                 friendsHtml += `
                     <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
                         <span class="font-semibold text-gray-800">${friend.friendNickname}</span>
-                        <!-- Optional: Add a remove button later if needed 
-                        <button data-friend-id="${friend.friendId}" class="remove-friend-btn text-xs text-red-500 hover:text-red-700">Remove</button>
-                        -->
+                        <!-- MODIFIED: Added Remove button -->
+                        <button 
+                            data-friend-id="${friend.friendId}" 
+                            data-friend-nickname="${friend.friendNickname}" 
+                            class="remove-friend-btn text-xs text-red-600 font-semibold px-3 py-1 rounded-full border border-red-300 hover:bg-red-50 transition duration-150">
+                            Remove
+                        </button>
                     </div>
                 `;
             }
             container.innerHTML = friendsHtml;
+            
+            // --- START: NEW Event Listeners for Remove Button ---
+            document.querySelectorAll('.remove-friend-btn').forEach(btn => {
+                btn.addEventListener('click', handleRemoveFriend);
+            });
+            // --- END: NEW Event Listeners for Remove Button ---
         }
         // --- END: NEW Render Friends List Function ---
 
@@ -3129,5 +3210,7 @@
     </script>
 </body>
 </html>
+
+
 
 
