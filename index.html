@@ -136,6 +136,17 @@
                 <!-- Search results will be injected here -->
                 <p id="friend-search-placeholder" class="text-center text-gray-500 p-4">Search results will appear here.</p>
             </div>
+
+            <!-- START: NEW Current Friends List -->
+            <div class="mt-6 border-t pt-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-2">Your Friends</h3>
+                <p class="text-sm text-gray-600 mb-4">Your current list of friends.</p>
+                <div id="current-friends-container" class="space-y-3 max-h-48 overflow-y-auto">
+                    <p id="current-friends-loading" class="text-center text-gray-500">Loading friends...</p>
+                    <!-- Current friends will be injected here -->
+                </div>
+            </div>
+            <!-- END: NEW Current Friends List -->
         </div>
     </div>
     <!-- END: NEW Add Friend Modal -->
@@ -633,6 +644,7 @@
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
         let followedGames = {}; // PRIVATE: User's list of followed games
+        let currentFriends = {}; // NEW: User's list of current friends
         let gameMetadata = {}; // PUBLIC: Real-time follower counts for all games
         let fetchErrorCount = 0;
         let currentGameIdInDetailView = null; // NEW: Tracks the game in detail view
@@ -642,6 +654,7 @@
         let unsubscribeFollowedGames = null; // NEW - This will be removed
         let unsubscribeUserProfile = null; // NEW (was already global, just clarifying)
         let unsubscribeFriendRequests = null; // NEW
+        let unsubscribeFriendsList = null; // NEW
         
         let unsubscribePromptListener = null; 
         let unsubscribePromptsAdmin = null; 
@@ -1734,6 +1747,10 @@
             document.getElementById('friend-search-input').value = '';
             document.getElementById('friend-search-results-container').innerHTML = 
                 `<p id="friend-search-placeholder" class="text-center text-gray-500 p-4">Search results will appear here.</p>`;
+            
+            // NEW: Render the current friends list when modal opens
+            renderCurrentFriendsList(); 
+            
             document.getElementById('add-friend-modal').classList.remove('hidden');
         }
 
@@ -1782,15 +1799,31 @@
                         return;
                     }
 
-                    resultsHtml += `
-                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
-                            <span class="font-semibold text-gray-800">${profile.nickname}</span>
+                    // NEW: Check if they are already a friend
+                    let buttonHtml = '';
+                    if (currentFriends[profile.userId]) {
+                        // They are already a friend
+                        buttonHtml = `
+                            <button class="bg-gray-400 text-white px-3 py-1 rounded-lg text-sm cursor-not-allowed" disabled>
+                                Already Friends
+                            </button>
+                        `;
+                    } else {
+                        // They are not a friend, show Send Request button
+                        buttonHtml = `
                             <button 
                                 data-recipient-id="${profile.userId}" 
                                 data-recipient-nickname="${profile.nickname}"
                                 class="send-friend-request-btn bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600 transition duration-150 text-sm font-semibold">
                                 Send Request
                             </button>
+                        `;
+                    }
+
+                    resultsHtml += `
+                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                            <span class="font-semibold text-gray-800">${profile.nickname}</span>
+                            ${buttonHtml} <!-- NEW: Use the dynamic button HTML -->
                         </div>
                     `;
                 });
@@ -1818,6 +1851,12 @@
             const button = e.currentTarget;
             const recipientId = button.dataset.recipientId;
             const recipientNickname = button.dataset.recipientNickname;
+
+            // NEW: Check if already friends
+            if (currentFriends[recipientId]) {
+                showMessageBox("Already Friends", `You are already friends with ${recipientNickname}.`);
+                return; // Stop execution
+            }
 
             if (!userId || isAnonymous || !userNickname) {
                 showMessageBox("Error", "You must be logged in and have a nickname to send requests.");
@@ -1975,6 +2014,39 @@
             }
         }
         // --- END: NEW Friend Management Functions ---
+
+        // --- START: NEW Render Friends List Function ---
+        /**
+         * NEW: Renders the list of current friends in the modal.
+         */
+        function renderCurrentFriendsList() {
+            const container = document.getElementById('current-friends-container');
+            if (!container) return; // Modal not open or element not found
+
+            if (Object.keys(currentFriends).length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">You haven't added any friends yet.</p>`;
+                return;
+            }
+
+            let friendsHtml = '';
+            // Sort friends by nickname alphabetically
+            const sortedFriends = Object.values(currentFriends).sort((a, b) => 
+                a.friendNickname.localeCompare(b.friendNickname)
+            );
+
+            for (const friend of sortedFriends) {
+                friendsHtml += `
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                        <span class="font-semibold text-gray-800">${friend.friendNickname}</span>
+                        <!-- Optional: Add a remove button later if needed 
+                        <button data-friend-id="${friend.friendId}" class="remove-friend-btn text-xs text-red-500 hover:text-red-700">Remove</button>
+                        -->
+                    </div>
+                `;
+            }
+            container.innerHTML = friendsHtml;
+        }
+        // --- END: NEW Render Friends List Function ---
 
 
         // --- Filter and UI Helper Functions ---
@@ -2507,11 +2579,16 @@
             // if (unsubscribeFollowedGames) unsubscribeFollowedGames();
             if (unsubscribeUserProfile) unsubscribeUserProfile();
             if (unsubscribeFriendRequests) unsubscribeFriendRequests(); // NEW
+            if (unsubscribeFriendsList) unsubscribeFriendsList(); // NEW
             
             unsubscribeGameMetadata = null;
             // unsubscribeFollowedGames = null;
             unsubscribeUserProfile = null;
             unsubscribeFriendRequests = null; // NEW
+            unsubscribeFriendsList = null; // NEW
+            
+            // NEW: Clear friends list data
+            currentFriends = {};
             
             console.log("Cleared all persistent Firestore listeners.");
         }
@@ -2688,10 +2765,36 @@
                 setupFriendRequestListener(currentUserId);
                 // --- END: NEW Friend Request Listener ---
 
+                // --- START: NEW Friends List Listener ---
+                if (unsubscribeFriendsList) unsubscribeFriendsList(); // Clear old one
+                const friendsColRef = getFriendsColRef(db, currentUserId);
+                unsubscribeFriendsList = onSnapshot(friendsColRef, (snapshot) => {
+                    const newFriends = {};
+                    snapshot.forEach(doc => {
+                        newFriends[doc.id] = doc.data();
+                    });
+                    currentFriends = newFriends;
+                    console.log("Current friends list updated:", currentFriends);
+                    
+                    // Re-render the list if the modal is open
+                    if (!document.getElementById('add-friend-modal').classList.contains('hidden')) {
+                        renderCurrentFriendsList();
+                    }
+
+                }, (error) => {
+                    console.error("Error listening to friends list:", error);
+                    const container = document.getElementById('current-friends-container');
+                    if (container) {
+                        container.innerHTML = `<p class="text-center text-red-500">Error loading friends list.</p>`;
+                    }
+                });
+                // --- END: NEW Friends List Listener ---
+
             } else {
                 // Is anonymous, clear any potentially stale private data
                 followedGames = {};
                 userNickname = null;
+                currentFriends = {}; // NEW: Clear friends list for anonymous users
                 // --- START: NEW: Clear badges for anonymous users ---
                 // REMOVED: References to account badges
                 /*
@@ -3023,7 +3126,4 @@
     </script>
 </body>
 </html>
-
-
-
 
