@@ -67,6 +67,17 @@
         }
         /* --- END: NEW Notification Badge Style --- */
         
+        /* --- START: NEW Hide scrollbar --- */
+        /* Hide scrollbar for WebKit browsers (Chrome, Safari, etc.) */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for Firefox */
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        /* --- END: NEW Hide scrollbar --- */
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -101,18 +112,21 @@
     </div>
 
     <!-- START: NEW Add Friend Modal -->
-    <div id="add-friend-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-[60] flex items-start justify-center transition-opacity duration-300 pt-24">
-        <div class="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-800">Find Friends</h3>
-                <button id="add-friend-close-btn" class="text-gray-400 hover:text-gray-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
+    <!-- MODIFIED: Added pb-24 to give bottom spacing, ensuring the modal doesn't hit the bottom edge -->
+    <div id="add-friend-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-[60] flex items-start justify-center transition-opacity duration-300 pt-24 pb-24">
+        <!-- MODIFIED: Added 'hide-scrollbar' class to the scrolling panel -->
+        <div class="relative bg-white rounded-lg shadow-2xl p-6 max-w-md w-full max-h-full overflow-y-auto hide-scrollbar">
+            <!-- REMOVED: The sticky header <div> that acted as a 'white box' -->
+
+            <!-- MOVED & MODIFIED: The close button is now absolute-positioned in the top-right corner of this panel. -->
+            <button id="add-friend-close-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
 
             <!-- START: MOVED Friends & Requests Section -->
+            <!-- This content will now be at the top, respecting the panel's p-6 padding -->
             <div class="mb-6 border-b pb-6">
                 <h3 class="text-xl font-bold text-gray-800 mb-2">Friend Requests</h3>
                 <p class="text-sm text-gray-600 mb-4">Manage your incoming friend requests here.</p>
@@ -3210,6 +3224,9 @@
     </script>
 </body>
 </html>
+
+
+
 
 
 
