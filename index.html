@@ -1167,6 +1167,12 @@
                 const dotColor = isOffline ? 'bg-gray-400' : 'bg-green-500';
                 
                 let detailHtml;
+                // --- START: MODIFICATION ---
+                // Added rowAttributes and rowClasses to make game rows clickable
+                let rowAttributes = ''; 
+                let rowClasses = 'flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0'; 
+                // --- END: MODIFICATION ---
+
                 if (isOffline) {
                     let lastSeenText = 'A while ago';
                     if (status.lastSeen) {
@@ -1189,13 +1195,21 @@
                 } else if (status.gameId) {
                     // Friend is watching a game
                     detailHtml = `<span class="text-xs font-semibold text-red-600">${status.text}</span>`;
+                    
+                    // --- START: MODIFICATION ---
+                    // Add attributes to make the row clickable
+                    rowAttributes = `data-game-id="${status.gameId}" title="Click to view game: ${status.text.replace('Watching ', '')}"`;
+                    // Add link class, cursor, and hover effect (with negative margins to make the padding work)
+                    rowClasses += ' friend-activity-game-link cursor-pointer hover:bg-gray-50 transition duration-150 rounded-md -mx-2 px-2'; 
+                    // --- END: MODIFICATION ---
+                    
                 } else {
                     // Friend is online, browsing, etc.
                     detailHtml = `<span class="text-xs font-semibold text-blue-600">${status.text}</span>`;
                 }
 
                 return `
-                    <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
+                    <div class="${rowClasses}" ${rowAttributes}>
                         <div class="flex items-center space-x-3">
                             <span class="w-2 h-2 rounded-full ${dotColor}"></span>
                             <span class="text-base font-black text-gray-800">${friend.nickname}</span>
@@ -1207,6 +1221,18 @@
             
             const html = `<div class="bg-white p-6 rounded-xl shadow-xl">${activityListHtml}</div>`;
             container.innerHTML = html;
+
+            // --- START: NEW ---
+            // Add event listeners for the new clickable rows
+            document.querySelectorAll('.friend-activity-game-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const gameId = e.currentTarget.dataset.gameId;
+                    if (gameId) {
+                        showGameDetail(gameId);
+                    }
+                });
+            });
+            // --- END: NEW ---
         }
         // END: MODIFIED renderFriendActivityFeed
 
@@ -3348,4 +3374,5 @@
     </script>
 </body>
 </html>
+
 
