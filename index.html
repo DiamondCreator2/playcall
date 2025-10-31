@@ -366,12 +366,10 @@
             
             <!-- User ID Display -- REMOVED -->
             
-            <!-- Friend Activity Section (Mock) -->
+            <!-- START: MODIFIED Friend Activity Section -->
             <div>
-                <!-- START: MODIFIED Header -->
                 <div class="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 class="text-2xl font-bold text-gray-800">Friend Activity (Mock)</h3>
-                    <!-- START: MODIFIED Add Friend Button -->
+                    <h3 class="text-2xl font-bold text-gray-800">Friend Activity</h3>
                     <button id="add-friend-btn" class="relative bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-150 text-sm font-semibold flex items-center space-x-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
@@ -380,13 +378,12 @@
                         <span>Add Friend</span>
                         <span id="dashboard-requests-badge" class="notification-badge hidden"></span>
                     </button>
-                    <!-- END: MODIFIED Add Friend Button -->
                 </div>
-                <!-- END: MODIFIED Header -->
                 <div id="friend-activity-list">
-                    <!-- Friend activity list will be injected here -->
+                    <!-- Friend activity list will be injected here by renderFriendActivityFeed -->
                 </div>
             </div>
+            <!-- END: MODIFIED Friend Activity Section -->
             
             <!-- Followed Games Section (Firestore Data) -->
             <div>
@@ -665,23 +662,16 @@
         
         // --- GLOBAL FIRESTORE UNSUBSCRIBE FUNCTIONS ---
         let unsubscribeGameMetadata = null; // NEW
-        let unsubscribeFollowedGames = null; // NEW - This will be removed
         let unsubscribeUserProfile = null; // NEW (was already global, just clarifying)
         let unsubscribeFriendRequests = null; // NEW
         let unsubscribeFriendsList = null; // NEW
+        let unsubscribeFriendStatuses = null; // START: NEW
         
         let unsubscribePromptListener = null; 
         let unsubscribePromptsAdmin = null; 
         let unsubscribeLeaderboardListener = null; 
 
-        // Mock data for the Friend Activity Feed
-        const mockFriends = [
-            { name: 'Alex M.', status: 'Watching', detail: 'NFL (DAL vs PHI)', color: 'green' },
-            { name: 'Jamie P.', status: 'Offline', detail: '', color: 'gray' },
-            { name: 'Chris K.', status: 'Watching', detail: 'EPL (MAN U vs LIV)', color: 'green' },
-            { name: 'Morgan S.', status: 'Browsing', detail: 'Scores', color: 'blue' },
-        ];
-
+        // REMOVED: mockFriends array is no longer needed
 
         // --- ESPN API ENDPOINT CONFIGURATION ---
         const ESPN_ENDPOINTS = {
@@ -816,6 +806,39 @@
                 return collection(dbInstance, 'artifacts', appId, 'public', 'data', 'leaderboards', gameId, 'users');
             }
         }
+
+        // START: NEW User Status Update Function
+        /**
+         * Updates the user's status in their public profile.
+         * @param {object} newStatus - The status object, e.g., { text: 'Online' }
+         */
+        async function updateUserStatus(newStatus) {
+            // Only update status for real, logged-in users
+            if (isAnonymous || !userId || !db) {
+                return;
+            }
+
+            try {
+                const profileDocRef = getUserPublicProfileDocRef(db, userId);
+                await updateDoc(profileDocRef, { status: newStatus });
+                console.log("User status updated:", newStatus.text);
+            } catch (error) {
+                // This might fail if the doc doesn't exist yet (race condition on login),
+                // so we use setDoc with merge as a fallback.
+                if (error.code === 'no-such-entity' || error.code === 'not-found') {
+                    try {
+                        const profileDocRef = getUserPublicProfileDocRef(db, userId);
+                        await setDoc(profileDocRef, { status: newStatus }, { merge: true });
+                        console.log("User status set (merge):", newStatus.text);
+                    } catch (e) {
+                        console.error("Failed to set (merge) user status:", e);
+                    }
+                } else {
+                    console.error("Failed to update user status:", error);
+                }
+            }
+        }
+        // END: NEW User Status Update Function
 
         // --- Date Helper Functions ---
         // ... (getApiDate is unchanged)
@@ -1116,32 +1139,76 @@
             `;
         }
 
-        // ... (renderFriendActivityFeed is unchanged)
-        function renderFriendActivityFeed() {
+        // START: MODIFIED renderFriendActivityFeed
+        /**
+         * Renders the real-time friend activity feed.
+         * @param {Array<object>} friendProfiles - An array of friend profile objects from Firestore.
+         */
+        function renderFriendActivityFeed(friendProfiles) {
             const container = document.getElementById('friend-activity-list');
-            const activityListHtml = mockFriends.map(friend => {
-                const dotColor = friend.color === 'green' ? 'bg-green-500' : friend.color === 'blue' ? 'bg-blue-500' : 'bg-gray-400';
-                let detailLink;
-                if (friend.status === 'Watching') {
-                    detailLink = `<span class="text-xs font-semibold text-red-600">${friend.status} ${friend.detail}</span>`;
-                } else if (friend.status === 'Browsing') {
-                    detailLink = `<span class="text-xs font-semibold text-blue-600">${friend.status} ${friend.detail}</span>`;
+            
+            if (!friendProfiles || friendProfiles.length === 0) {
+                container.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-xl text-center text-gray-500">No friend activity to show. Add some friends to get started!</div>`;
+                return;
+            }
+
+            // Sort profiles: Online first, then by nickname
+            friendProfiles.sort((a, b) => {
+                const statusA = a.status?.text || 'Offline';
+                const statusB = b.status?.text || 'Offline';
+                if (statusA === 'Offline' && statusB !== 'Offline') return 1;
+                if (statusA !== 'Offline' && statusB === 'Offline') return -1;
+                return a.nickname.localeCompare(b.nickname);
+            });
+
+            const activityListHtml = friendProfiles.map(friend => {
+                const status = friend.status || { text: 'Offline', lastSeen: new Date(0).toISOString() }; // Default status
+                const isOffline = status.text === 'Offline';
+                const dotColor = isOffline ? 'bg-gray-400' : 'bg-green-500';
+                
+                let detailHtml;
+                if (isOffline) {
+                    let lastSeenText = 'A while ago';
+                    if (status.lastSeen) {
+                        try {
+                            const lastSeenDate = new Date(status.lastSeen);
+                            // Check if it's a valid date
+                            if (!isNaN(lastSeenDate.getTime())) {
+                                const now = new Date();
+                                const diffMs = now - lastSeenDate;
+                                const diffHours = Math.floor(diffMs / 3600000);
+                                if (diffHours < 24) {
+                                    lastSeenText = `Today at ${lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                                } else {
+                                    lastSeenText = lastSeenDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                }
+                            }
+                        } catch(e) { /* Use default */ }
+                    }
+                    detailHtml = `<span class="text-xs font-semibold text-gray-500">Offline (Last seen: ${lastSeenText})</span>`;
+                } else if (status.gameId) {
+                    // Friend is watching a game
+                    detailHtml = `<span class="text-xs font-semibold text-red-600">${status.text}</span>`;
                 } else {
-                    detailLink = `<span class="text-xs font-semibold text-gray-500">Offline</span>`;
+                    // Friend is online, browsing, etc.
+                    detailHtml = `<span class="text-xs font-semibold text-blue-600">${status.text}</span>`;
                 }
+
                 return `
                     <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
                         <div class="flex items-center space-x-3">
                             <span class="w-2 h-2 rounded-full ${dotColor}"></span>
-                            <span class="text-base font-black text-gray-800">${friend.name}</span>
+                            <span class="text-base font-black text-gray-800">${friend.nickname}</span>
                         </div>
-                        ${detailLink}
+                        ${detailHtml}
                     </div>
                 `;
             }).join('');
+            
             const html = `<div class="bg-white p-6 rounded-xl shadow-xl">${activityListHtml}</div>`;
             container.innerHTML = html;
         }
+        // END: MODIFIED renderFriendActivityFeed
 
         // ... (renderScores is unchanged)
         function renderScores() {
@@ -1192,12 +1259,15 @@
             showGameDetail(gameId);
         }
 
-        // ... (renderFollowedGames is unchanged)
+        // START: MODIFIED renderFollowedGames
         function renderFollowedGames() {
             if (!isAuthReady) return; 
             const container = document.getElementById('followed-games-container');
             const noGamesMessage = document.getElementById('no-followed-games');
-            renderFriendActivityFeed(); 
+            
+            // REMOVED: renderFriendActivityFeed(); 
+            // This is now handled by the friend status listener in setupFirestoreListeners
+            
             const followedList = gamesData.filter(game => followedGames[game.id]);
             if (followedList.length === 0) {
                 noGamesMessage.classList.remove('hidden');
@@ -1215,6 +1285,7 @@
                 });
             }
         }
+        // END: MODIFIED renderFollowedGames
         
         // ... (renderAdminPrompts is unchanged)
         function renderAdminPrompts() {
@@ -2290,6 +2361,12 @@
             }
             // --- START MODIFICATION ---
             currentGameIdInDetailView = gameId; // NEW: Set the global tracker
+            // START: NEW Update user status
+            updateUserStatus({
+                text: `Watching ${game.awayTeam} vs ${game.homeTeam}`,
+                gameId: game.id
+            });
+            // END: NEW
             // --- END MODIFICATION ---
             
             switchView('detail');
@@ -2551,15 +2628,18 @@
             } else if (view === 'dashboard') {
                 document.getElementById('dashboard-view').classList.remove('hidden');
                 renderFollowedGames();
+                updateUserStatus({ text: 'Online' }); // START: NEW
             } else if (view === 'scores') {
                 document.getElementById('scores-view').classList.remove('hidden');
                 populateLeagueFilter(); 
                 renderScores();
+                updateUserStatus({ text: 'Browsing Scores' }); // START: NEW
             } else if (view === 'admin') {
                 // NEW: Check for admin privileges
                 if (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) {
                     document.getElementById('admin-view').classList.remove('hidden');
                     renderAdminPanel();
+                    updateUserStatus({ text: 'Managing Admin Panel' }); // START: NEW
                 } else {
                     // Not an admin, redirect
                     console.warn("Access Denied: User is not authorized for Admin Panel.");
@@ -2568,13 +2648,16 @@
                     if (isAnonymous) {
                         document.getElementById('scores-view').classList.remove('hidden'); // Show scores view
                         highlightedView = 'scores'; // Set the view to highlight
+                        updateUserStatus({ text: 'Browsing Scores' }); // START: NEW
                     } else {
                         document.getElementById('dashboard-view').classList.remove('hidden'); // Show dashboard view
                         highlightedView = 'dashboard'; // Set the view to highlight
+                        updateUserStatus({ text: 'Online' }); // START: NEW
                     }
                 }
             } else if (view === 'account') { // NEW
                 document.getElementById('account-view').classList.remove('hidden');
+                updateUserStatus({ text: 'In Account Settings' }); // START: NEW
                 // START: NEW: Attach friend request listener
                 // MOVED: This logic is now in setupFirestoreListeners
                 /*
@@ -2678,12 +2761,14 @@
             if (unsubscribeUserProfile) unsubscribeUserProfile();
             if (unsubscribeFriendRequests) unsubscribeFriendRequests(); // NEW
             if (unsubscribeFriendsList) unsubscribeFriendsList(); // NEW
+            if (unsubscribeFriendStatuses) unsubscribeFriendStatuses(); // START: NEW
             
             unsubscribeGameMetadata = null;
             // unsubscribeFollowedGames = null;
             unsubscribeUserProfile = null;
             unsubscribeFriendRequests = null; // NEW
             unsubscribeFriendsList = null; // NEW
+            unsubscribeFriendStatuses = null; // START: NEW
             
             // NEW: Clear friends list data
             currentFriends = {};
@@ -2879,6 +2964,33 @@
                         renderCurrentFriendsList();
                     }
 
+                    // START: NEW Friend Status Listener Logic
+                    if (unsubscribeFriendStatuses) unsubscribeFriendStatuses(); // Clear old status listener
+                    
+                    const friendIds = Object.keys(currentFriends);
+                    if (friendIds.length === 0) {
+                        renderFriendActivityFeed([]); // Render empty state
+                        unsubscribeFriendStatuses = null;
+                        return; // No friends, nothing to listen to
+                    }
+
+                    // We can only listen to 30 friends at a time with 'in' query
+                    const limitedFriendIds = friendIds.slice(0, 30); 
+                    
+                    const q = query(getUserPublicProfileColRef(db), where('userId', 'in', limitedFriendIds));
+                    unsubscribeFriendStatuses = onSnapshot(q, (statusSnapshot) => {
+                        const friendProfiles = [];
+                        statusSnapshot.forEach(doc => {
+                            friendProfiles.push(doc.data());
+                        });
+                        console.log("Friend statuses updated:", friendProfiles);
+                        renderFriendActivityFeed(friendProfiles); // Render the feed with new data
+                    }, (error) => {
+                        console.error("Error listening to friend statuses:", error);
+                        renderFriendActivityFeed([]); // Render empty on error
+                    });
+                    // END: NEW Friend Status Listener Logic
+
                 }, (error) => {
                     console.error("Error listening to friends list:", error);
                     const container = document.getElementById('current-friends-container');
@@ -2946,11 +3058,12 @@
                 const newUserId = userCredential.user.uid;
                 const emailPrefix = email.split('@')[0];
                 const profileDocRef = getUserPublicProfileDocRef(db, newUserId);
-                // MODIFIED: Add 'following: {}' on registration
+                // MODIFIED: Add 'following: {}' and 'status: {}' on registration
                 await setDoc(profileDocRef, { 
                     nickname: emailPrefix,
                     userId: newUserId,
-                    following: {} // NEW: Initialize the following map
+                    following: {}, // NEW: Initialize the following map
+                    status: { text: 'Online' } // START: NEW
                 }, { merge: true });
                 
                 // onAuthStateChanged will handle the rest
@@ -2979,10 +3092,12 @@
                     const profileDocRef = getUserPublicProfileDocRef(db, newUserId);
                     
                     // Create their profile just like in handleRegister
+                    // MODIFIED: Add 'following: {}' and 'status: {}' on registration
                     await setDoc(profileDocRef, { 
                         nickname: emailPrefix,
                         userId: newUserId,
-                        following: {} // NEW: Initialize the following map
+                        following: {}, // NEW: Initialize the following map
+                        status: { text: 'Online' } // START: NEW
                     }, { merge: true });
                 } else {
                     console.log("Returning user signed in with Google:", user.uid);
@@ -3025,6 +3140,9 @@
 
         async function handleSignOut() {
             try {
+                // START: NEW Set status to offline before signing out
+                await updateUserStatus({ text: 'Offline', lastSeen: new Date().toISOString() });
+                // END: NEW
                 await signOut(auth);
                 // onAuthStateChanged will detect sign-out and then sign in anonymously
             } catch (error) {
@@ -3063,6 +3181,12 @@
                         isAnonymous = user.isAnonymous;
                         
                         console.log(`User signed in: ${userId} (Anonymous: ${isAnonymous})`);
+
+                        // START: NEW Set status to Online on login
+                        if (!isAnonymous) {
+                            await updateUserStatus({ text: 'Online' });
+                        }
+                        // END: NEW
 
                         // Update all UI based on auth state
                         updateAuthUI(user);
@@ -3224,10 +3348,4 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
 
