@@ -95,6 +95,24 @@
         </div>
     </div>
 
+    <!-- --- START: NEW 'beforeunload' handler --- -->
+    <script type(text/javascript)>
+        /**
+         * Best-effort attempt to set status to 'Offline' when the window closes.
+         * This is NOT guaranteed to run or complete, as browsers limit
+         * async operations on page unload.
+         */
+        function handleWindowClose() {
+            // This function needs access to 'auth', 'db', and 'getUserPublicProfileDocRef'
+            // which are defined in the module script. We'll define the *real*
+            // function inside the module and just call it from here.
+            if (window.handleWindowCloseModule) {
+                window.handleWindowCloseModule();
+            }
+        }
+    </script>
+    <!-- --- END: NEW 'beforeunload' handler --- -->
+
     <!-- NEW: Custom Confirm Box Modal -->
     <div id="confirm-box-container" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300">
         <div class="bg-white rounded-lg shadow-2xl p-6 max-w-sm w-full">
@@ -850,6 +868,30 @@
             const day = String(date.getDate()).padStart(2, '0');
             return `${year}${month}${day}`;
         }
+
+        // --- START: NEW 'beforeunload' handler (Module Scope) ---
+        /**
+         * Best-effort attempt to set status to 'Offline' when the window closes.
+         * This is NOT guaranteed to run or complete, as browsers limit
+         * async operations on page unload.
+         */
+        window.handleWindowCloseModule = function() {
+            if (auth && auth.currentUser && !auth.currentUser.isAnonymous) {
+                const currentUserId = auth.currentUser.uid;
+                const profileDocRef = getUserPublicProfileDocRef(db, currentUserId);
+                if (profileDocRef) {
+                    console.log("handleWindowClose: Attempting to set status to Offline.");
+                    // Fire-and-forget async call. May not complete.
+                    updateDoc(profileDocRef, { 
+                        status: { text: 'Offline', lastSeen: new Date().toISOString() } 
+                    }).catch(err => {
+                        // This error will likely not be seen, but good to have
+                        console.error("Error in beforeunload update:", err);
+                    });
+                }
+            }
+        }
+        // --- END: NEW 'beforeunload' handler (Module Scope) ---
 
         // --- API Data Fetching & Transformation ---
         // ... (transformEspnGame is unchanged)
@@ -3199,6 +3241,11 @@
                 
                 // 1. Handle Authentication via state listener
                 onAuthStateChanged(auth, async (user) => {
+                    // --- START: NEW 'beforeunload' listener management ---
+                    // Remove any existing listener to prevent duplicates or attaching to guest sessions
+                    window.removeEventListener('beforeunload', handleWindowClose);
+                    // --- END: NEW ---
+
                     isAuthReady = true; // Auth state is now resolved
                     
                     if (user) {
@@ -3211,6 +3258,9 @@
                         // START: NEW Set status to Online on login
                         if (!isAnonymous) {
                             await updateUserStatus({ text: 'Online' });
+                            // --- START: NEW Add listener *only* for logged-in users ---
+                            window.addEventListener('beforeunload', handleWindowClose);
+                            // --- END: NEW ---
                         }
                         // END: NEW
 
@@ -3374,5 +3424,6 @@
     </script>
 </body>
 </html>
+
 
 
