@@ -689,6 +689,7 @@
         let unsubscribePromptListener = null; 
         let unsubscribePromptsAdmin = null; 
         let unsubscribeLeaderboardListener = null; 
+        let pbpInterval = null; // START: NEW for Play-by-Play polling
 
         // REMOVED: mockFriends array is no longer needed
 
@@ -701,6 +702,17 @@
             'EPL': 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
             'NHL': 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
         };
+
+        // START: NEW Play-by-Play Summary Endpoints
+        const ESPN_SUMMARY_ENDPOINTS = {
+            'NFL': 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary',
+            'NCAAF': 'https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary',
+            'NBA': 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary',
+            'MLB': 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary',
+            'EPL': 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary',
+            'NHL': 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/summary',
+        };
+        // END: NEW
 
         // --- Custom Message Box (Replacing alert/confirm) ---
         function showMessageBox(title, body) {
@@ -933,7 +945,7 @@
         // --- END: NEW 'beforeunload' handler (Module Scope) ---
 
         // --- API Data Fetching & Transformation ---
-        // ... (transformEspnGame is unchanged)
+        // START: MODIFIED transformEspnGame
         function transformEspnGame(league, event) {
             if (!event.competitions || event.competitions.length === 0) return null;
             const competition = event.competitions[0];
@@ -987,6 +999,7 @@
             const uniqueId = competition.id || event.id;
             return {
                 id: `${league}-${uniqueId}`, 
+                rawEventId: event.id, // <-- START: NEW
                 league: league,
                 status: gameStatus,
                 time: displayTime,
@@ -999,6 +1012,7 @@
                 downDistanceText: downDistanceText, // <-- NEW: Add to game object
             };
         }
+        // END: MODIFIED transformEspnGame
         
         // ... (withExponentialBackoff is unchanged)
         async function withExponentialBackoff(fn, maxRetries = 5, delay = 1000) {
@@ -1651,6 +1665,174 @@
             }
         }
         
+        // START: NEW Play-by-Play functions
+        /**
+         * NEW: Renders the play-by-play data into the detail view.
+         */
+        function renderPlayByPlay(plays) {
+            const container = document.getElementById('pbp-list');
+            const loadingEl = document.getElementById('pbp-loading');
+
+            if (!container) return; // View was closed
+
+            if (!plays || plays.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">No play-by-play data available for this game yet.</p>`;
+                return;
+            }
+
+            // The 'plays' array from ESPN is typically latest-first, which is what we want.
+            container.innerHTML = plays.map(play => {
+                // Check for valid clock and period
+                const period = play.period ? (play.period.displayValue || play.period.number || '') : '';
+                const clock = play.clock ? (play.clock.displayValue || '') : '';
+                // Handle different clock/period formats (e.g., soccer just has a minute)
+                let timeString;
+                if (period && clock) {
+                    timeString = `${period} - ${clock}`;
+                } else if (play.clock && play.clock.displayValue) {
+                    timeString = play.clock.displayValue; // For sports like soccer
+                } else {
+                    timeString = period || 'N/A';
+                }
+                
+                const typeText = play.type ? play.type.text : '';
+                const playText = play.text || 'Play description not available.';
+
+                return `
+                    <div class="p-3 border-b border-gray-100 last:border-b-0">
+                        <div class="flex justify-between items-center text-xs font-bold text-gray-500 mb-1">
+                            <span>${timeString}</span>
+                            <span class="bg-gray-100 px-2 py-0.5 rounded-full">${typeText}</span>
+                        </div>
+                        <p class="text-sm text-gray-800">${playText}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * NEW: Fetches and sets up polling for play-by-play data for a game.
+         */
+        function fetchPlayByPlay(league, rawEventId) {
+            // Clear any existing poll
+            if (pbpInterval) {
+                clearInterval(pbpInterval);
+                pbpInterval = null;
+            }
+
+            const baseUrl = ESPN_SUMMARY_ENDPOINTS[league];
+            if (!baseUrl) {
+                console.error(`No PBP summary endpoint found for league: ${league}`);
+                renderPlayByPlay(null); // Will show 'No data'
+                return;
+            }
+
+            const url = `${baseUrl}?event=${rawEventId}`;
+
+            // Define the async fetch function
+            const getPBP = async () => {
+                try {
+                    // Check if the detail view is still open
+                    if (document.getElementById('detail-view').classList.contains('hidden')) {
+                        if (pbpInterval) {
+                            clearInterval(pbpInterval);
+                            pbpInterval = null;
+                        }
+                        return;
+                    }
+
+                    await withExponentialBackoff(async () => {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status} for PBP at ${url}`);
+                        }
+                        const data = await response.json();
+                        
+                        // --- START: MODIFIED Play-by-Play Data Extraction ---
+                        // More robustly find the play-by-play data, as its location
+                        // can vary by sport (e.g., NFL, NBA, EPL).
+
+                        let plays = [];
+                        
+                        if (data.plays && Array.isArray(data.plays) && data.plays.length > 0) {
+                            // Standard location (e.g., NBA, MLB) or a flat list for NFL
+                            console.log(`PBP: Found ${data.plays.length} plays in data.plays`);
+                            plays = data.plays;
+                        } 
+                        else if (data.drives && data.drives.previous && Array.isArray(data.drives.previous)) {
+                            // Fallback for NFL/NCAAF, where plays are nested under drives
+                            console.log(`PBP: data.plays not found. Checking data.drives...`);
+                            
+                            // Combine plays from 'previous' and 'current' drives
+                            let allDrives = [...data.drives.previous];
+                            if (data.drives.current) {
+                                allDrives.push(data.drives.current);
+                            }
+
+                            // Flatten all plays from all drives
+                            let allDrivePlays = allDrives.flatMap(drive => 
+                                (drive.plays && Array.isArray(drive.plays)) ? drive.plays : []
+                            );
+                            
+                            if (allDrivePlays.length > 0) {
+                                // This list is now [Drive1Play1, D1P2, Drive2Play1, D2P2...]
+                                // The drives are chronological, and the plays *within* them
+                                // are often reverse-chronological.
+                                // For simplicity, we'll reverse the whole flattened list
+                                // to get the most recent plays first.
+                                plays = allDrivePlays.reverse();
+                                console.log(`PBP: Found ${plays.length} plays in data.drives`);
+                            }
+                        } 
+                        else if (data.commentary && Array.isArray(data.commentary)) {
+                            // Fallback for Soccer (EPL)
+                            console.log(`PBP: No plays found. Checking data.commentary for soccer...`);
+                            // Transform commentary items to match the 'play' object structure
+                            plays = data.commentary.map(item => ({
+                                id: item.id,
+                                text: item.text,
+                                clock: { displayValue: item.time ? item.time.displayValue : '' },
+                                type: { text: item.type || 'Commentary' }
+                            }));
+                            // This is typically latest-first already
+                            console.log(`PBP: Found ${plays.length} items in data.commentary`);
+                        }
+                        // --- END: MODIFIED Play-by-Play Data Extraction ---
+
+                        // Check if the game is over
+                        const gameStatus = data.header?.competitions?.[0]?.status?.type?.name;
+                        const isFinal = gameStatus === 'STATUS_FINAL' || gameStatus === 'STATUS_COMPLETED';
+
+                        renderPlayByPlay(plays);
+
+                        // If the game is final, stop polling
+                        if (isFinal) {
+                            if (pbpInterval) {
+                                clearInterval(pbpInterval);
+                                pbpInterval = null;
+                                console.log("Game is final, stopping PBP poll.");
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error(`Error fetching PBP:`, error);
+                    // If it fails (e.g., 404), stop polling
+                    if (pbpInterval) {
+                        clearInterval(pbpInterval);
+                        pbpInterval = null;
+                    }
+                    renderPlayByPlay(null); // Show 'No data'
+                }
+            };
+
+            // Initial call
+            getPBP();
+
+            // Set up the poll
+            pbpInterval = setInterval(getPBP, 10000); // Poll every 10 seconds
+        }
+        // END: NEW Play-by-Play functions
+
         /**
          * START: NEW Admin function to clear an entire leaderboard for a game.
          */
@@ -2548,10 +2730,17 @@
                             <p id="prompt-resolved-user" class="text-xs text-gray-400 mt-2"></p>
                         </div>
                     </div>
-                    <h4 class="text-2xl font-bold mt-8 text-gray-700">Live Play-by-Play & Chat (Mock)</h4>
-                    <p class="text-gray-500 mt-2">
-                        Game data is live! The full play-by-play and chat features would integrate here.
-                    </p>
+                    
+                    <!-- START: NEW Live Play-by-Play -->
+                    <div id="pbp-container" class="mt-8 w-full max-w-lg">
+                        <h4 class="text-2xl font-bold text-gray-700 text-center">Live Play-by-Play</h4>
+                        <div id="pbp-list" class="mt-4 bg-white p-4 rounded-lg shadow-md border max-h-96 overflow-y-auto hide-scrollbar">
+                            <p id="pbp-loading" class="text-center text-gray-500">Loading play-by-play...</p>
+                            <!-- PBP items will be injected here -->
+                        </div>
+                    </div>
+                    <!-- END: NEW Live Play-by-Play -->
+
                     <div id="leaderboard-container" class="mt-8 w-full max-w-lg">
                         <h4 class="text-2xl font-bold text-gray-700 text-center">Game Leaderboard</h4>
                         <div id="leaderboard-list" class="mt-4 bg-white p-4 rounded-lg shadow-md border">
@@ -2561,6 +2750,10 @@
                 </div>
             `;
             // --- END MODIFICATION ---
+
+            // START: NEW Fetch Play-by-Play
+            fetchPlayByPlay(game.league, game.rawEventId);
+            // END: NEW
 
             if (unsubscribePromptListener) {
                 unsubscribePromptListener();
@@ -2734,6 +2927,13 @@
                 unsubscribeLeaderboardListener = null;
                 console.log("Stopped leaderboard listener.");
             }
+            // START: NEW
+            if (pbpInterval) {
+                clearInterval(pbpInterval);
+                pbpInterval = null;
+                console.log("Stopped play-by-play polling.");
+            }
+            // END: NEW
             // NEW: Clear the detail view tracker when we leave the detail view
             if (view !== 'detail') {
                 currentGameIdInDetailView = null;
@@ -3503,7 +3703,5 @@
     </script>
 </body>
 </html>
-
-
 
 
