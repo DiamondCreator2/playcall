@@ -668,8 +668,9 @@
         let isAuthReady = false; // Flag to indicate auth state is resolved
         let isAnonymous = true; // NEW: Flag to track if user is guest or real
         let userNickname = null; 
+        let currentView = 'scores'; // NEW: Tracks the current active view
         const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
-
+ 
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
         let followedGames = {}; // PRIVATE: User's list of followed games
@@ -869,6 +870,44 @@
             return `${year}${month}${day}`;
         }
 
+        // --- START: NEW Page Visibility Handler ---
+        /**
+         * Handles browser tab visibility changes to set user status.
+         * This is only active for logged-in (non-anonymous) users.
+         */
+        function handleVisibilityChange() {
+            if (isAnonymous || !userId) {
+                // Should not be attached if user is anonymous, but as a safeguard
+                return;
+            }
+
+            if (document.visibilityState === 'hidden') {
+                // User switched tabs or minimized
+                console.log("Tab hidden, setting status to Away.");
+                updateUserStatus({ text: 'Away' });
+            } else if (document.visibilityState === 'visible') {
+                // User came back to the tab
+                console.log(`Tab visible, restoring status for view: ${currentView}`);
+                
+                // Check if we are on the detail view, as it has special status logic
+                if (currentGameIdInDetailView && currentView === 'detail') {
+                    const game = gamesData.find(g => g.id === currentGameIdInDetailView);
+                    if (game) {
+                        // Restore "Watching Game" status
+                        updateUserStatus({ text: `Watching ${game.awayTeam} vs ${game.homeTeam}`, gameId: game.id });
+                    } else {
+                        // Fallback, game data not found, go to dashboard
+                        switchView('dashboard');
+                    }
+                } else {
+                    // Re-run the switchView logic for any other view (dashboard, scores, etc.)
+                    // This will in turn call updateUserStatus with the correct status
+                    switchView(currentView || 'dashboard');
+                }
+            }
+        }
+        // --- END: NEW Page Visibility Handler ---
+
         // --- START: NEW 'beforeunload' handler (Module Scope) ---
         /**
          * Best-effort attempt to set status to 'Offline' when the window closes.
@@ -898,6 +937,14 @@
         function transformEspnGame(league, event) {
             if (!event.competitions || event.competitions.length === 0) return null;
             const competition = event.competitions[0];
+            // --- START: NEW ---
+            // Get situational data like down & yards
+            const situation = competition.situation;
+            let downDistanceText = null;
+            if (situation && situation.downDistanceText) {
+                downDistanceText = situation.downDistanceText;
+            }
+            // --- END: NEW ---
             const competitors = competition.competitors;
             if (!competitors || competitors.length < 2) return null;
             const home = competitors.find(c => c.homeAway === 'home');
@@ -949,6 +996,7 @@
                 awayScore: parseInt(away.score) || 0,
                 followers: 0, 
                 statusDetail: statusText,
+                downDistanceText: downDistanceText, // <-- NEW: Add to game object
             };
         }
         
@@ -1047,6 +1095,21 @@
                 timeEl.classList.add(game.status === 'In Progress' ? 'text-green-600' : 'text-gray-500');
             }
             if (statusEl) statusEl.textContent = game.statusDetail;
+
+            // --- START: NEW ---
+            // Update the Down & Yards info
+            const downInfoEl = document.getElementById('detail-down-info');
+            const downInfoTextEl = downInfoEl ? downInfoEl.querySelector('p') : null;
+
+            if (downInfoEl && downInfoTextEl) {
+                if (game.status === 'In Progress' && game.downDistanceText) {
+                    downInfoTextEl.textContent = game.downDistanceText;
+                    downInfoEl.classList.remove('hidden');
+                } else {
+                    downInfoEl.classList.add('hidden');
+                }
+            }
+            // --- END: NEW ---
         }
         
         // ... (renderGameCardFeed is unchanged)
@@ -2457,6 +2520,13 @@
                                 ${game.time}
                             </p>
                             <p id="detail-game-status" class="text-xs text-gray-500">${game.statusDetail}</p>
+                            
+                            <!-- START: NEW Down & Yards Info -->
+                            <div id="detail-down-info" class="${(game.status === 'In Progress' && game.downDistanceText) ? '' : 'hidden'}">
+                                <p class="text-lg font-bold text-blue-600 mt-2">${game.downDistanceText || ''}</p>
+                            </div>
+                            <!-- END: NEW Down & Yards Info -->
+
                         </div>
                         <div class="flex-1">
                             <p class="text-xl font-semibold text-gray-600">${game.homeTeam}</p>
@@ -2639,6 +2709,8 @@
         // --- View Switching and Initialization ---
 
         function switchView(view) {
+            currentView = view; // NEW: Track the current view
+
             // Hide all main views
             document.getElementById('auth-view').classList.add('hidden'); // NEW
             document.getElementById('dashboard-view').classList.add('hidden');
@@ -3245,6 +3317,11 @@
                     // Remove any existing listener to prevent duplicates or attaching to guest sessions
                     window.removeEventListener('beforeunload', handleWindowClose);
                     // --- END: NEW ---
+                    
+                    // --- START: NEW Page Visibility API listeners ---
+                    // Remove any existing visibility listener to prevent duplicates
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                    // --- END: NEW Page Visibility API listeners ---
 
                     isAuthReady = true; // Auth state is now resolved
                     
@@ -3260,6 +3337,8 @@
                             await updateUserStatus({ text: 'Online' });
                             // --- START: NEW Add listener *only* for logged-in users ---
                             window.addEventListener('beforeunload', handleWindowClose);
+                            // --- START: NEW Add visibility listener *only* for logged-in users ---
+                            document.addEventListener('visibilitychange', handleVisibilityChange);
                             // --- END: NEW ---
                         }
                         // END: NEW
@@ -3424,6 +3503,7 @@
     </script>
 </body>
 </html>
+
 
 
 
