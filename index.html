@@ -671,6 +671,11 @@
         let currentView = 'scores'; // NEW: Tracks the current active view
         const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
  
+        // --- START: NEW Auto-Prompt State ---
+        let autoPromptEnabledGames = new Set(); // Stores gameIds admin wants to auto-prompt
+        let activeAutoPrompts = new Map(); // Tracks active auto-prompts to prevent duplicates (gameId -> downDistanceText)
+        // --- END: NEW Auto-Prompt State ---
+ 
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
         let followedGames = {}; // PRIVATE: User's list of followed games
@@ -679,6 +684,11 @@
         let fetchErrorCount = 0;
         let currentGameIdInDetailView = null; // NEW: Tracks the game in detail view
         
+        // --- START: MODIFIED FOR LOADING OPTIMIZATION ---
+        let hasFetchedApiData = false; // NEW FLAG
+        let apiFetchInterval = null; // NEW: To store the interval ID
+        // --- END: MODIFIED ---
+
         // --- GLOBAL FIRESTORE UNSUBSCRIBE FUNCTIONS ---
         let unsubscribeGameMetadata = null; // NEW
         let unsubscribeUserProfile = null; // NEW (was already global, just clarifying)
@@ -1072,6 +1082,12 @@
             
             // --- START MODIFICATION ---
             gamesData = uniqueGames;
+
+            // --- START: NEW Auto-Prompt Trigger Check ---
+            // After updating game data, check if any auto-prompts should be triggered
+            checkAutoPromptTriggers(uniqueGames);
+            // --- END: NEW Auto-Prompt Trigger Check ---
+
             renderFollowedGames();
             renderScores();
             renderAdminPanel();
@@ -1086,6 +1102,30 @@
             }
             // --- END MODIFICATION ---
         }
+
+        // --- START: NEW Function for Loading Optimization ---
+        /**
+         * NEW: Separate function to fetch API data and set up polling.
+         * This will be called *after* the profile loads.
+         */
+        function startApiDataFetching() {
+            // Only run this once
+            if (hasFetchedApiData) {
+                return;
+            }
+            hasFetchedApiData = true;
+
+            console.log("Profile loaded. Starting initial API data fetch...");
+            
+            // 1. Fetch initial data
+            fetchEspnScores();
+            
+            // 2. Set up interval for refreshing scores
+            // Clear any old interval just in case
+            if (apiFetchInterval) clearInterval(apiFetchInterval);
+            apiFetchInterval = setInterval(fetchEspnScores, 15000);
+        }
+        // --- END: NEW Function ---
 
 
         // --- UI Rendering Functions ---
@@ -1525,53 +1565,191 @@
                     <input type="number" class="admin-input bg-gray-100 cursor-not-allowed" value="${game.awayScore}" readonly title="API data is read-only">
                 `;
                 const actionCell = row.insertCell();
-                actionCell.innerHTML = `
-                    <button class="bg-gray-500 text-white px-3 py-1 rounded-lg text-sm opacity-50 cursor-not-allowed" disabled>
-                        Save
-                    </button>
-                `;
+                
+                // --- START: MODIFIED Admin Actions Cell ---
+                const isFootball = game.league === 'NFL' || game.league === 'NCAAF';
+                const isLive = game.status === 'In Progress';
+                
+                if (isFootball && isLive) {
+                    const isChecked = autoPromptEnabledGames.has(game.id);
+                    // Render the Auto-Prompt Toggle Switch
+                    actionCell.innerHTML = `
+                        <label for="toggle-${game.id}" class="relative inline-flex items-center cursor-pointer" title="Toggle automatic 3rd down prompts for this game">
+                            <input type="checkbox" id="toggle-${game.id}" class="sr-only peer auto-prompt-toggle" data-game-id="${game.id}" ${isChecked ? 'checked' : ''}>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            <span class="ml-2 text-xs font-medium text-gray-700">Auto-Prompt</span>
+                        </label>
+                    `;
+                } else {
+                    // Not an active football game, no action
+                    actionCell.innerHTML = `
+                        <span class="text-xs text-gray-400">N/A</span>
+                    `;
+                }
+                // --- END: MODIFIED Admin Actions Cell ---
             });
+
+            // --- START: NEW Event Listener for Toggles ---
+            // Add event listeners to the new toggles
+            document.querySelectorAll('.auto-prompt-toggle').forEach(toggle => {
+                toggle.removeEventListener('change', handleAutoPromptToggle); // Remove old listener
+                toggle.addEventListener('change', handleAutoPromptToggle); // Add new listener
+            });
+            // --- END: NEW Event Listener for Toggles ---
         }
         
-        // ... (handleNewPrompt is unchanged)
-        async function handleNewPrompt() {
-            if (!isAuthReady) {
-                showMessageBox("Error", "Authentication not ready.");
+        // --- START: NEW Auto-Prompt Toggle Handler ---
+        /**
+         * Handles the admin toggling auto-prompts for a game.
+         */
+        function handleAutoPromptToggle(e) {
+            const gameId = e.target.dataset.gameId;
+            if (e.target.checked) {
+                autoPromptEnabledGames.add(gameId);
+                console.log(`Auto-prompt ENABLED for ${gameId}`);
+            } else {
+                autoPromptEnabledGames.delete(gameId);
+                activeAutoPrompts.delete(gameId); // Also clear any active prompt lock
+                console.log(`Auto-prompt DISABLED for ${gameId}`);
+            }
+            console.log('Currently monitored games:', autoPromptEnabledGames);
+        }
+        // --- END: NEW Auto-Prompt Toggle Handler ---
+
+
+        // --- START: NEW Auto-Prompt Trigger Logic ---
+        /**
+         * Checks all updated games and fires auto-prompts if conditions are met.
+         */
+        async function checkAutoPromptTriggers(updatedGames) {
+            // Only run if there are games being monitored
+            if (autoPromptEnabledGames.size === 0) {
                 return;
             }
-            const gameId = document.getElementById('prompt-game-id').value.trim();
-            const question = document.getElementById('prompt-question').value.trim();
+
+            for (const game of updatedGames) {
+                // Check if this game is one we are monitoring
+                if (autoPromptEnabledGames.has(game.id)) {
+                    
+                    const isFootball = game.league === 'NFL' || game.league === 'NCAAF';
+                    const isThirdDown = isFootball && game.downDistanceText && game.downDistanceText.startsWith('3rd');
+
+                    if (isThirdDown) {
+                        // It's a 3rd down. Try to trigger a prompt.
+                        await triggerAutoPrompt(game);
+                    } else if (activeAutoPrompts.has(game.id)) {
+                        // The game is no longer on 3rd down, so remove the lock,
+                        // allowing a prompt for the *next* 3rd down.
+                        console.log(`Resetting auto-prompt lock for ${game.id} (no longer 3rd down).`);
+                        activeAutoPrompts.delete(game.id);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Attempts to create an auto-prompt for a specific game,
+         * checking for duplicates first.
+         */
+        async function triggerAutoPrompt(game) {
+            // DE-DUPLICATION CHECK:
+            // Have we already sent a prompt for this *exact* 3rd down situation?
+            if (activeAutoPrompts.get(game.id) === game.downDistanceText) {
+                // Yes, we have. Do nothing.
+                // console.log(`Auto-prompt for ${game.id} blocked (duplicate: ${game.downDistanceText})`);
+                return;
+            }
+
+            console.log(`Attempting to create auto-prompt for ${game.id} (${game.downDistanceText})...`);
+            
+            // This is a new 3rd down. Attempt to create the prompt.
+            const question = `Will they convert this ${game.downDistanceText}?`;
+            const result = await createPrompt(game.id, question);
+
+            if (result.success) {
+                // Successfully created the prompt.
+                console.log(`Auto-prompt for ${game.id} CREATED successfully.`);
+                // Set the lock to prevent re-firing for this same down.
+                activeAutoPrompts.set(game.id, game.downDistanceText);
+            } else {
+                // Prompt creation failed, *probably* because one is already active.
+                // This is fine. We'll still set the lock to prevent
+                // re-spamming this *same* 3rd down while the old prompt is active.
+                console.log(`Auto-prompt for ${game.id} BLOCKED (Reason: ${result.error})`);
+                activeAutoPrompts.set(game.id, game.downDistanceText);
+            }
+        }
+        // --- END: NEW Auto-Prompt Trigger Logic ---
+
+
+        // --- START: MODIFIED Prompt Creation Logic ---
+        
+        /**
+         * CORE FUNCTION: Tries to create a new prompt document in Firestore.
+         * Returns { success: true } or { success: false, error: '...' }
+         * This function does NOT show any UI messages.
+         */
+        async function createPrompt(gameId, question) {
             if (!gameId || !question) {
-                showMessageBox("Input Required", "Please enter both a valid Game ID and a Question.");
-                return;
+                return { success: false, error: 'Missing Game ID or Question.' };
             }
+            if (!isAuthReady) {
+                return { success: false, error: 'Authentication not ready.' };
+            }
+
             const promptsColRef = getGamePromptsColRef(db);
             const activeQuery = query(promptsColRef, where('gameId', '==', gameId), where('isResolved', '==', false));
+            
             try {
                 const activeSnapshot = await getDocs(activeQuery);
                 if (!activeSnapshot.empty) {
-                    showMessageBox("Existing Prompt Active", `There is already an active prompt for game ${gameId}. Please resolve the current one before creating a new one.`);
-                    return;
+                    return { success: false, error: 'An active prompt already exists for this game.' };
                 }
+
                 const newPrompt = {
                     gameId: gameId,
                     question: question,
                     createdAt: new Date().toISOString(),
-                    userId: userId,
+                    userId: userId, // The Admin's user ID
                     isResolved: false,
                     answer: null,
                     resolvedAt: null,
                     yesCount: 0,
                     noCount: 0
                 };
+                
                 await addDoc(promptsColRef, newPrompt);
-                document.getElementById('prompt-question').value = '';
-                showMessageBox("Prompt Created", `New live question successfully created for game ${gameId}!`);
+                return { success: true };
+
             } catch (error) {
-                console.error("Error sending new prompt:", error);
-                showMessageBox("Prompt Error", `Failed to create prompt. Error: ${error.message}`);
+                console.error("Error in createPrompt:", error);
+                return { success: false, error: error.message };
             }
         }
+
+        /**
+         * UI HANDLER: Reads from admin inputs and calls createPrompt,
+         * then shows a UI message.
+         */
+        async function handleNewPrompt() {
+            const gameId = document.getElementById('prompt-game-id').value.trim();
+            const question = document.getElementById('prompt-question').value.trim();
+
+            if (!gameId || !question) {
+                showMessageBox("Input Required", "Please enter both a valid Game ID and a Question.");
+                return;
+            }
+
+            const result = await createPrompt(gameId, question);
+
+            if (result.success) {
+                document.getElementById('prompt-question').value = '';
+                showMessageBox("Prompt Created", `New live question successfully created for game ${gameId}!`);
+            } else {
+                showMessageBox("Prompt Error", `Failed to create prompt. Error: ${result.error}`);
+            }
+        }
+        // --- END: MODIFIED Prompt Creation Logic ---
         
         // ... (handleSetAnswer is unchanged)
         async function handleSetAnswer(promptId, answer) {
@@ -2752,7 +2930,24 @@
             // --- END MODIFICATION ---
 
             // START: NEW Fetch Play-by-Play
-            fetchPlayByPlay(game.league, game.rawEventId);
+            // MODIFICATION: Delay the PBP fetch slightly to make the view feel faster.
+            // Clear any existing poll just in case (e.g., rapid clicking)
+            if (pbpInterval) {
+                clearInterval(pbpInterval);
+                pbpInterval = null;
+            }
+            // Use setTimeout to run this *after* the current execution stack clears
+            // and the UI has had a chance to render the new detail view.
+            setTimeout(() => {
+                // Check if we are still in the detail view for this game
+                if (currentGameIdInDetailView === gameId) {
+                    console.log(`Delay complete, fetching PBP for ${gameId}`);
+                    fetchPlayByPlay(game.league, game.rawEventId);
+                } else {
+                    console.log("PBP fetch skipped; user switched views before delay ended.");
+                }
+            }, 300); // 300ms delay
+            // fetchPlayByPlay(game.league, game.rawEventId); // This was the original immediate call
             // END: NEW
 
             if (unsubscribePromptListener) {
@@ -3113,7 +3308,16 @@
             // NEW: Clear friends list data
             currentFriends = {};
             
-            console.log("Cleared all persistent Firestore listeners.");
+            // --- START: MODIFIED FOR LOADING OPTIMIZATION ---
+            // NEW: Clear API fetch flag and interval on sign-out
+            hasFetchedApiData = false;
+            if (apiFetchInterval) {
+                clearInterval(apiFetchInterval);
+                apiFetchInterval = null;
+            }
+            // --- END: MODIFIED ---
+            
+            console.log("Cleared all persistent Firestore listeners and API fetch interval.");
         }
 
         /**
@@ -3277,6 +3481,12 @@
                         renderScores();
                     }
 
+                    // --- START: MODIFIED FOR LOADING OPTIMIZATION ---
+                    // This is the point where the user's profile is loaded.
+                    // We can now start fetching the API data.
+                    startApiDataFetching();
+                    // --- END: MODIFIED ---
+
                 }, (error) => {
                     console.error("Firestore onSnapshot (User Profile) error:", error);
                     // document.getElementById('current-nickname-display').textContent = "Error loading nickname."; // El removed
@@ -3360,6 +3570,12 @@
                 const dashboardBadge = document.getElementById('dashboard-requests-badge');
                 if (dashboardBadge) dashboardBadge.classList.add('hidden');
                 // --- END: NEW ---
+                
+                // --- START: MODIFIED FOR LOADING OPTIMIZATION ---
+                // Anonymous users don't have a profile to wait for.
+                // We should start fetching API data for them immediately.
+                startApiDataFetching();
+                // --- END: MODIFIED ---
             }
         }
         
@@ -3551,15 +3767,15 @@
                         document.getElementById('user-id-display-account').textContent = userId; // NEW
 
                         // Set up the correct listeners for this user
+                        // This will now ALSO trigger the API data fetch
                         setupFirestoreListeners(userId, isAnonymous);
 
-                        // Fetch scores for everyone
-                        fetchEspnScores();
-                        
-                        // --- START MODIFICATION ---
-                        // Set up interval for refreshing scores
-                        setInterval(fetchEspnScores, 15000); // Shortened interval to 15s
-                        // --- END MODIFICATION ---
+                        // --- START: MODIFIED FOR LOADING OPTIMIZATION ---
+                        // REMOVED: fetchEspnScores();
+                        // REMOVED: setInterval(fetchEspnScores, 15000); 
+                        // This logic is now moved into startApiDataFetching(),
+                        // which is called by setupFirestoreListeners
+                        // --- END: MODIFIED ---
                         
                         // Go to Dashboard if real user, Scores if guest
                         switchView(isAnonymous ? 'scores' : 'dashboard');
@@ -3703,5 +3919,3 @@
     </script>
 </body>
 </html>
-
-
