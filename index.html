@@ -671,10 +671,11 @@
         let currentView = 'scores'; // NEW: Tracks the current active view
         const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
  
-        // --- START: NEW Auto-Prompt State ---
+        // --- START: MODIFIED Auto-Prompt State ---
         let autoPromptEnabledGames = new Set(); // Stores gameIds admin wants to auto-prompt
-        let activeAutoPrompts = new Map(); // Tracks active auto-prompts to prevent duplicates (gameId -> downDistanceText)
-        // --- END: NEW Auto-Prompt State ---
+        // MODIFIED: This now stores the *active prompt info* to enable auto-resolution
+        let activeAutoPrompts = new Map(); // Map<gameId, { promptId: string, downDistanceText: string }>
+        // --- END: MODIFIED Auto-Prompt State ---
  
         // --- GLOBAL DATA & STATE ---
         let gamesData = []; 
@@ -1084,7 +1085,7 @@
             gamesData = uniqueGames;
 
             // --- START: NEW Auto-Prompt Trigger Check ---
-            // After updating game data, check if any auto-prompts should be triggered
+            // After updating game data, check if any auto-prompts should be triggered OR resolved
             checkAutoPromptTriggers(uniqueGames);
             // --- END: NEW Auto-Prompt Trigger Check ---
 
@@ -1617,35 +1618,64 @@
         // --- END: NEW Auto-Prompt Toggle Handler ---
 
 
-        // --- START: NEW Auto-Prompt Trigger Logic ---
+        // --- START: MODIFIED Auto-Prompt Trigger Logic ---
         /**
-         * Checks all updated games and fires auto-prompts if conditions are met.
+         * Checks all updated games.
+         * 1. Resolves any active auto-prompts whose plays have finished.
+         * 2. Creates new auto-prompts for games on 3rd down.
          */
         async function checkAutoPromptTriggers(updatedGames) {
-            // Only run if there are games being monitored
-            if (autoPromptEnabledGames.size === 0) {
-                return;
+            // We need to check games we *are* monitoring (for creation)
+            // AND games that *have* active prompts (for resolution).
+            const gameIdsToCheck = new Set([...autoPromptEnabledGames, ...activeAutoPrompts.keys()]);
+
+            if (gameIdsToCheck.size === 0) {
+                return; // Nothing to do
             }
 
-            for (const game of updatedGames) {
-                // Check if this game is one we are monitoring
-                if (autoPromptEnabledGames.has(game.id)) {
-                    
-                    const isFootball = game.league === 'NFL' || game.league === 'NCAAF';
-                    const isThirdDown = isFootball && game.downDistanceText && game.downDistanceText.startsWith('3rd');
+            for (const gameId of gameIdsToCheck) {
+                const game = updatedGames.find(g => g.id === gameId);
+                if (!game) continue; // Game data not in this update
 
-                    if (isThirdDown) {
-                        // It's a 3rd down. Try to trigger a prompt.
-                        await triggerAutoPrompt(game);
-                    } else if (activeAutoPrompts.has(game.id)) {
-                        // The game is no longer on 3rd down, so remove the lock,
-                        // allowing a prompt for the *next* 3rd down.
-                        console.log(`Resetting auto-prompt lock for ${game.id} (no longer 3rd down).`);
+                const isFootball = game.league === 'NFL' || game.league === 'NCAAF';
+                if (!isFootball) continue; // Not a football game (shouldn't happen, but good check)
+
+                const activePromptInfo = activeAutoPrompts.get(game.id);
+                const isThirdDown = game.downDistanceText && game.downDistanceText.startsWith('3rd');
+
+                if (activePromptInfo) {
+                    // --- 1. RESOLUTION LOGIC ---
+                    // We have an active auto-prompt. Check if its 3rd down play has finished.
+                    const originalDownText = activePromptInfo.downDistanceText;
+                    const currentDownText = game.downDistanceText;
+
+                    if (currentDownText !== originalDownText) {
+                        // The play is over! The down text has changed.
+                        let answer = 'No'; // Default to No
+                        if (currentDownText && currentDownText.startsWith('1st')) {
+                            answer = 'Yes'; // They converted for a 1st down!
+                        }
+                        
+                        console.log(`Auto-resolving prompt ${activePromptInfo.promptId} for ${game.id}. Play: '${originalDownText}' -> '${currentDownText || 'N/A'}'. Result: ${answer}`);
+                        
+                        // Call handleSetAnswer. This will update scores.
+                        // We don't await this, let it run in the background.
+                        handleSetAnswer(activePromptInfo.promptId, answer);
+                        
+                        // Remove from map so we don't resolve it again.
                         activeAutoPrompts.delete(game.id);
                     }
+                    // Else: 3rd down play is still in progress (text hasn't changed), so do nothing.
+
+                } else if (autoPromptEnabledGames.has(game.id) && isThirdDown) {
+                    // --- 2. CREATION LOGIC ---
+                    // We are monitoring this game, it's on 3rd down, and we *don't* have an active auto-prompt.
+                    // Try to create one.
+                    await triggerAutoPrompt(game);
                 }
             }
         }
+
 
         /**
          * Attempts to create an auto-prompt for a specific game,
@@ -1653,12 +1683,8 @@
          */
         async function triggerAutoPrompt(game) {
             // DE-DUPLICATION CHECK:
-            // Have we already sent a prompt for this *exact* 3rd down situation?
-            if (activeAutoPrompts.get(game.id) === game.downDistanceText) {
-                // Yes, we have. Do nothing.
-                // console.log(`Auto-prompt for ${game.id} blocked (duplicate: ${game.downDistanceText})`);
-                return;
-            }
+            // This is handled by the `activeAutoPrompts.has(game.id)` check in the parent function.
+            // If we are here, it's safe to try and create one.
 
             console.log(`Attempting to create auto-prompt for ${game.id} (${game.downDistanceText})...`);
             
@@ -1668,25 +1694,26 @@
 
             if (result.success) {
                 // Successfully created the prompt.
-                console.log(`Auto-prompt for ${game.id} CREATED successfully.`);
-                // Set the lock to prevent re-firing for this same down.
-                activeAutoPrompts.set(game.id, game.downDistanceText);
+                console.log(`Auto-prompt for ${game.id} CREATED: ${result.promptId}`);
+                // Set the lock to prevent re-firing, AND store info needed for auto-resolution.
+                activeAutoPrompts.set(game.id, {
+                    promptId: result.promptId,
+                    downDistanceText: game.downDistanceText
+                });
             } else {
-                // Prompt creation failed, *probably* because one is already active.
-                // This is fine. We'll still set the lock to prevent
-                // re-spamming this *same* 3rd down while the old prompt is active.
+                // Prompt creation failed, *probably* because a *manual* one is already active.
+                // This is fine. We don't add it to our map, so we won't try to auto-resolve it.
                 console.log(`Auto-prompt for ${game.id} BLOCKED (Reason: ${result.error})`);
-                activeAutoPrompts.set(game.id, game.downDistanceText);
             }
         }
-        // --- END: NEW Auto-Prompt Trigger Logic ---
+        // --- END: MODIFIED Auto-Prompt Trigger Logic ---
 
 
         // --- START: MODIFIED Prompt Creation Logic ---
         
         /**
          * CORE FUNCTION: Tries to create a new prompt document in Firestore.
-         * Returns { success: true } or { success: false, error: '...' }
+         * Returns { success: true, promptId: '...' } or { success: false, error: '...' }
          * This function does NOT show any UI messages.
          */
         async function createPrompt(gameId, question) {
@@ -1718,8 +1745,9 @@
                     noCount: 0
                 };
                 
-                await addDoc(promptsColRef, newPrompt);
-                return { success: true };
+                // MODIFIED: Get the new DocumentReference
+                const newDocRef = await addDoc(promptsColRef, newPrompt);
+                return { success: true, promptId: newDocRef.id }; // MODIFIED: Return the new ID
 
             } catch (error) {
                 console.error("Error in createPrompt:", error);
@@ -1751,7 +1779,9 @@
         }
         // --- END: MODIFIED Prompt Creation Logic ---
         
-        // ... (handleSetAnswer is unchanged)
+        // --- END: MODIFIED Prompt Creation Logic ---
+        
+        // --- START: MODIFIED handleSetAnswer ---
         async function handleSetAnswer(promptId, answer) {
             if (!isAuthReady) {
                 showMessageBox("Error", "Authentication not ready.");
@@ -1764,6 +1794,15 @@
                     showMessageBox("Error", "Prompt not found. Cannot update scores.");
                     return;
                 }
+                
+                // --- START: NEW Guard ---
+                // Check if the prompt is already resolved.
+                if (promptSnap.data().isResolved) {
+                    console.log(`Prompt ${promptId} is already resolved to '${promptSnap.data().answer}'. Auto-resolve call for '${answer}' skipped.`);
+                    return; // Already done, do nothing
+                }
+                // --- END: NEW Guard ---
+
                 const gameId = promptSnap.data().gameId;
                 await updateDoc(promptDocRef, {
                     isResolved: true,
