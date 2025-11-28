@@ -1843,21 +1843,20 @@
                 const noCount = pData.noCount || 0;
                 const totalVotes = yesCount + noCount;
                 
-                let pointsForWin = 1; // Default to 1 point minimum
+                let pointsForWin = 30; // Default starting value
                 
                 if (totalVotes > 0) {
                     if (answer === 'Yes') {
-                        // Answer is Yes. Points = Percentage of people who voted No (The losers).
-                        // e.g., 30 Yes, 70 No. Answer Yes. Points = (70/100)*100 = 70.
+                        // Answer is Yes. Points = Percentage of people who voted No.
                         pointsForWin = Math.round((noCount / totalVotes) * 100);
                     } else if (answer === 'No') {
-                        // Answer is No. Points = Percentage of people who voted Yes (The losers).
+                        // Answer is No. Points = Percentage of people who voted Yes.
                         pointsForWin = Math.round((yesCount / totalVotes) * 100);
                     }
                 }
                 
-                // Ensure at least 1 point is awarded
-                pointsForWin = Math.max(1, pointsForWin);
+                // FIX: Ensure a minimum of 30 points is awarded, even if everyone was correct.
+                pointsForWin = Math.max(30, pointsForWin);
                 // --- END: NEW SCORING LOGIC ---
 
                 const gameId = promptSnap.data().gameId;
@@ -1868,7 +1867,7 @@
                     pointsAwarded: pointsForWin // Save for reference
                 });
                 
-                showMessageBox("Prompt Resolved", `The prompt has been resolved to: ${answer}.\n\nPoints Awarded: ${pointsForWin} (based on opposing vote %).`);
+                showMessageBox("Prompt Resolved", `The prompt has been resolved to: ${answer}.\n\nPoints Awarded: ${pointsForWin} (Minimum 30).`);
                 
                 const votesColRef = getPromptVotesColRef(db, promptId);
                 const votesSnapshot = await getDocs(votesColRef);
