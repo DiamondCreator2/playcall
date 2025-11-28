@@ -1049,33 +1049,64 @@
             for (const dateConfig of datesToFetch) {
                 const apiDate = getApiDate(dateConfig.daysAgo);
                 for (const [league, baseUrl] of Object.entries(ESPN_ENDPOINTS)) {
-                    const url = dateConfig.daysAgo > 0 ? `${baseUrl}?dates=${apiDate}` : baseUrl;
-                    try {
-                        await withExponentialBackoff(async () => {
-                            const response = await fetch(url);
-                            if (!response.ok) {
-                                throw new Error(`HTTP error! status: ${response.status} for ${league} on ${dateConfig.label}`);
-                            }
-                            const data = await response.json();
-                            if (data.events && Array.isArray(data.events)) {
-                                const leagueGames = data.events
-                                    .map(event => transformEspnGame(league, event))
-                                    .filter(game => game !== null);
-                                if (dateConfig.daysAgo > 0) {
-                                    const finalGames = leagueGames.filter(g => g.status === 'Final');
-                                    allGames.push(...finalGames);
-                                } else {
-                                    allGames.push(...leagueGames);
+                    
+                    // --- START: MODIFIED MULTI-FETCH LOGIC ---
+                    // We split NCAAF into separate requests (FBS vs FCS) to prevent payload size errors.
+                    let requestsToMake = [];
+
+                    if (league === 'NCAAF') {
+                        requestsToMake = [
+                            { label: 'FBS', params: ['limit=900', 'groups=80'] }, // FBS (Div I-A)
+                            { label: 'FCS', params: ['limit=900', 'groups=81'] }  // FCS (Div I-AA)
+                        ];
+                    } else {
+                        requestsToMake = [
+                            { label: 'Default', params: [] }
+                        ];
+                    }
+
+                    for (const req of requestsToMake) {
+                        let url = baseUrl;
+                        // Clone the params array so we don't affect other iterations
+                        const currentParams = [...req.params];
+
+                        // For previous days, we MUST be specific with the date.
+                        if (dateConfig.daysAgo > 0) {
+                            currentParams.push(`dates=${apiDate}`);
+                        }
+                        // For "Today" (daysAgo === 0), we intentionally DO NOT pass a date for NFL/NCAAF/NBA.
+                        // This allows the ESPN API to return the "Current Week" schedule.
+
+                        if (currentParams.length > 0) {
+                            url += `?${currentParams.join('&')}`;
+                        }
+
+                        try {
+                            await withExponentialBackoff(async () => {
+                                const response = await fetch(url);
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status} for ${league} (${req.label}) on ${dateConfig.label}`);
                                 }
-                            }
-                        });
-                    } catch (error) {
-                        console.error(`Error fetching or processing ${league} data for ${dateConfig.label}:`, error);
-                        fetchErrorCount++;
-                        if (fetchErrorCount >= 10) {
-                             showMessageBox("Critical Fetch Error", "Failed to load scores after multiple retries across dates. The API may be unavailable or have changed.");
+                                const data = await response.json();
+                                if (data.events && Array.isArray(data.events)) {
+                                    const leagueGames = data.events
+                                        .map(event => transformEspnGame(league, event))
+                                        .filter(game => game !== null);
+                                    
+                                    if (dateConfig.daysAgo > 0) {
+                                        const finalGames = leagueGames.filter(g => g.status === 'Final');
+                                        allGames.push(...finalGames);
+                                    } else {
+                                        allGames.push(...leagueGames);
+                                    }
+                                }
+                            });
+                        } catch (error) {
+                            console.error(`Error fetching ${league} (${req.label}) data for ${dateConfig.label}:`, error);
+                            // We don't increment fetchErrorCount here to avoid spamming alerts for partial failures (e.g., if just FCS fails)
                         }
                     }
+                    // --- END: MODIFIED MULTI-FETCH LOGIC ---
                 }
             }
             const uniqueGames = Array.from(new Map(allGames.map(game => [game.id, game])).values());
