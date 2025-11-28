@@ -2806,28 +2806,41 @@
             const answerResult = document.getElementById('prompt-answer-result');
             const resolvedUser = document.getElementById('prompt-resolved-user');
             const votingSection = document.getElementById('voting-section');
-            const votingExtraInfo = document.getElementById('voting-extra-info'); // <-- ADDED
+            const votingExtraInfo = document.getElementById('voting-extra-info');
             
-            answerBox.classList.add('hidden');
-            container.classList.remove('bg-red-50', 'border-red-500', 'bg-green-50', 'border-green-500');
-            container.classList.add('bg-gray-50', 'border-gray-300'); 
-            votingSection.innerHTML = ''; 
-            if (votingExtraInfo) votingExtraInfo.innerHTML = ''; // <-- ADDED (The Fix)
+            // REMOVED: Global clearing of innerHTML to prevent flashing
+            // votingSection.innerHTML = ''; 
+            // if (votingExtraInfo) votingExtraInfo.innerHTML = '';
 
-            if (promptToDisplay) {
-                textEl.textContent = promptToDisplay.question;
-                if (promptToDisplay.isResolved) {
+            if (!promptToDisplay) {
+                 textEl.textContent = "Waiting for a live question...";
+                 votingSection.innerHTML = '';
+                 if (votingExtraInfo) votingExtraInfo.innerHTML = '';
+                 votingSection.dataset.promptId = ''; 
+                 return;
+            }
+
+            textEl.textContent = promptToDisplay.question;
+
+            // --- RESOLVED STATE ---
+            if (promptToDisplay.isResolved) {
+                // Only render resolved view if we aren't already showing it
+                if (votingSection.dataset.status !== 'resolved') {
                     answerBox.classList.remove('hidden');
                     answerResult.textContent = promptToDisplay.answer;
                     const answerColor = promptToDisplay.answer === 'Yes' ? 'bg-green-600' : 'bg-red-600';
                     answerResult.className = `text-white ${answerColor} text-3xl font-extrabold px-4 py-2 rounded-lg inline-block shadow-md`;
+                    
                     const time = new Date(promptToDisplay.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                     resolvedUser.textContent = `Resolved to ${promptToDisplay.answer} at ${time}`;
-                    container.classList.remove('bg-gray-50', 'border-gray-300');
+                    
+                    container.classList.remove('bg-gray-50', 'border-gray-300', 'bg-red-50', 'border-red-500');
                     container.classList.add('bg-green-50', 'border-green-500');
+                    
                     const totalVotes = promptToDisplay.yesCount + promptToDisplay.noCount;
                     const yesPct = totalVotes > 0 ? ((promptToDisplay.yesCount / totalVotes) * 100).toFixed(0) : 0;
                     const noPct = totalVotes > 0 ? ((promptToDisplay.noCount / totalVotes) * 100).toFixed(0) : 0;
+                    
                     votingSection.innerHTML = `
                         <div class="flex flex-col items-center p-3 rounded-xl bg-gray-100 w-full shadow-inner">
                             <p class="text-sm font-bold text-gray-700 mb-2">FINAL VOTE TALLY</p>
@@ -2844,72 +2857,157 @@
                             </div>
                         </div>
                     `;
-                } else {
-                    container.classList.remove('bg-gray-50', 'border-gray-300');
-                    container.classList.add('bg-red-50', 'border-red-500');
-                    let userVote = null;
-                    try {
-                        const voteDocRef = doc(getPromptVotesColRef(db, promptToDisplay.id), userId);
-                        const voteSnap = await getDoc(voteDocRef);
-                        if (voteSnap.exists()) {
-                            userVote = voteSnap.data().vote;
-                        }
-                    } catch (error) {
-                        console.warn("Could not retrieve user vote status:", error);
-                    }
+                    // Clear the extra info container as it's not needed for resolved state (or is redundant)
+                    if (votingExtraInfo) votingExtraInfo.innerHTML = '';
+                    
+                    // Mark state
+                    votingSection.dataset.status = 'resolved';
+                    votingSection.dataset.promptId = promptToDisplay.id;
+                }
+                return; 
+            }
+
+            // --- ACTIVE STATE ---
+            answerBox.classList.add('hidden');
+            container.classList.remove('bg-gray-50', 'border-gray-300', 'bg-green-50', 'border-green-500');
+            container.classList.add('bg-red-50', 'border-red-500');
+
+            // Fetch user vote status (needed for button styling/disabling)
+            let userVote = null;
+            try {
+                // Note: fetching inside render is not ideal for perf but ensures fresh state on count updates
+                const voteDocRef = doc(getPromptVotesColRef(db, promptToDisplay.id), userId);
+                const voteSnap = await getDoc(voteDocRef);
+                if (voteSnap.exists()) {
+                    userVote = voteSnap.data().vote;
+                }
+            } catch (error) {
+                console.warn("Could not retrieve user vote status:", error);
+            }
+
+            const totalVotes = promptToDisplay.yesCount + promptToDisplay.noCount;
+            const yesPct = totalVotes > 0 ? ((promptToDisplay.yesCount / totalVotes) * 100).toFixed(0) : 0;
+            const noPct = totalVotes > 0 ? ((promptToDisplay.noCount / totalVotes) * 100).toFixed(0) : 0;
+
+            // CHECK: Do we already have the UI built for this specific prompt?
+            const currentPromptId = votingSection.dataset.promptId;
+            const isInterfaceReady = currentPromptId === promptToDisplay.id && votingSection.dataset.status === 'active';
+
+            if (isInterfaceReady) {
+                // --- UPDATE IN PLACE (No Flashing) ---
+                
+                // 1. Update Buttons
+                const yesBtn = document.getElementById('vote-yes-btn');
+                const noBtn = document.getElementById('vote-no-btn');
+                
+                if (yesBtn && noBtn) {
+                    // Update Counts
+                    const yesSpan = yesBtn.querySelector('.count-span');
+                    const noSpan = noBtn.querySelector('.count-span');
+                    if (yesSpan) yesSpan.textContent = `(${promptToDisplay.yesCount})`;
+                    if (noSpan) noSpan.textContent = `(${promptToDisplay.noCount})`;
+
+                    // Update Classes/Disabled State (in case user just voted)
                     const disableClass = userVote ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:scale-[1.02]';
                     const yesButtonClass = userVote === 'Yes' ? 'border-4 border-green-600 shadow-xl' : 'border-4 border-transparent';
                     const noButtonClass = userVote === 'No' ? 'border-4 border-red-600 shadow-xl' : 'border-4 border-transparent';
-                    const totalVotes = promptToDisplay.yesCount + promptToDisplay.noCount;
-                    votingSection.innerHTML = `
-                        <button id="vote-yes-btn" data-vote="Yes" 
-                            class="vote-btn flex-1 bg-green-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${yesButtonClass}"
-                            ${userVote ? 'disabled' : ''}>
-                            YES <span class="text-sm font-medium ml-1">(${promptToDisplay.yesCount})</span>
-                        </button>
-                        <button id="vote-no-btn" data-vote="No"
-                            class="vote-btn flex-1 bg-red-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${noButtonClass}"
-                            ${userVote ? 'disabled' : ''}>
-                            NO <span class="text-sm font-medium ml-1">(${promptToDisplay.noCount})</span>
-                        </button>
-                    `;
-                    document.querySelectorAll('.vote-btn').forEach(button => {
-                        button.onclick = (e) => {
-                            if (!userVote) {
-                                handleVote(promptToDisplay.id, e.currentTarget.dataset.vote, userId);
-                            } else {
-                                showMessageBox("Already Voted", `You already chose ${userVote}. You must wait for the prompt to be resolved.`);
-                            }
-                        };
-                    });
+
+                    // Function to apply classes safely
+                    const updateBtnState = (btn, isYes, extraClass) => {
+                        const baseColor = isYes ? 'green' : 'red';
+                        btn.className = `vote-btn flex-1 bg-${baseColor}-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${extraClass}`;
+                        btn.disabled = !!userVote; // Disable if voted
+                    };
+
+                    updateBtnState(yesBtn, true, yesButtonClass);
+                    updateBtnState(noBtn, false, noButtonClass);
+                }
+
+                // 2. Update Progress Bars
+                const tallyLabel = document.getElementById('live-tally-label');
+                const bar = document.getElementById('live-tally-bar');
+                const pctYesLabel = document.getElementById('live-tally-pct-yes');
+                const pctNoLabel = document.getElementById('live-tally-pct-no');
+
+                if (totalVotes > 0) {
+                    if (tallyLabel) tallyLabel.textContent = `LIVE TALLY: ${totalVotes} Votes`;
+                    if (bar) bar.style.width = `${yesPct}%`;
+                    if (pctYesLabel) pctYesLabel.textContent = `${yesPct}% Yes`;
+                    if (pctNoLabel) pctNoLabel.textContent = `${noPct}% No`;
+                }
+
+                // 3. Update "You Voted" message if it appeared (or needs to appear)
+                const userVoteMsg = document.getElementById('user-vote-msg');
+                if (userVote && !userVoteMsg && votingExtraInfo) {
+                    // User voted but message isn't there yet, prepend it
+                    const msgDiv = document.createElement('div');
+                    msgDiv.id = 'user-vote-msg';
+                    msgDiv.innerHTML = `<p class="text-center text-sm text-gray-500 font-medium">You voted: <span class="font-bold text-${userVote === 'Yes' ? 'green' : 'red'}-600">${userVote}</span>. Waiting for resolution.</p>`;
+                    votingExtraInfo.insertBefore(msgDiv, votingExtraInfo.firstChild);
+                }
+
+            } else {
+                // --- FULL RENDER (First load or new prompt) ---
+                votingSection.dataset.promptId = promptToDisplay.id;
+                votingSection.dataset.status = 'active';
+
+                const disableClass = userVote ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:scale-[1.02]';
+                const yesButtonClass = userVote === 'Yes' ? 'border-4 border-green-600 shadow-xl' : 'border-4 border-transparent';
+                const noButtonClass = userVote === 'No' ? 'border-4 border-red-600 shadow-xl' : 'border-4 border-transparent';
+
+                votingSection.innerHTML = `
+                    <button id="vote-yes-btn" data-vote="Yes" 
+                        class="vote-btn flex-1 bg-green-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${yesButtonClass}"
+                        ${userVote ? 'disabled' : ''}>
+                        YES <span class="count-span text-sm font-medium ml-1">(${promptToDisplay.yesCount})</span>
+                    </button>
+                    <button id="vote-no-btn" data-vote="No"
+                        class="vote-btn flex-1 bg-red-500 text-white font-extrabold py-3 rounded-xl transition duration-150 ${disableClass} ${noButtonClass}"
+                        ${userVote ? 'disabled' : ''}>
+                        NO <span class="count-span text-sm font-medium ml-1">(${promptToDisplay.noCount})</span>
+                    </button>
+                `;
+
+                // Attach listeners
+                document.querySelectorAll('.vote-btn').forEach(button => {
+                    button.onclick = (e) => {
+                         // Check userVote/disabled again in case of race condition or rapid clicks
+                        if (!button.disabled) {
+                            // Optimistic disable to prevent double clicks immediately
+                            button.disabled = true; 
+                            handleVote(promptToDisplay.id, e.currentTarget.dataset.vote, userId);
+                        } else {
+                             showMessageBox("Already Voted", `You have already voted on this question.`);
+                        }
+                    };
+                });
+
+                // Render Extra Info (Bars)
+                if (votingExtraInfo) {
+                    let extraHtml = '';
                     if (userVote) {
-                         // MODIFIED: Insert into the new wrapper
-                         if (votingExtraInfo) votingExtraInfo.innerHTML += ` 
-                            <p class="text-center text-sm text-gray-500 font-medium">
-                                You voted: <span class="font-bold text-${userVote === 'Yes' ? 'green' : 'red'}-600">${userVote}</span>. Waiting for resolution.
-                            </p>
-                        `;
-                    }
-                    if (totalVotes > 0) {
-                        const yesPct = ((promptToDisplay.yesCount / totalVotes) * 100).toFixed(0);
-                        const noPct = ((promptToDisplay.noCount / totalVotes) * 100).toFixed(0);
-                         // MODIFIED: Insert into the new wrapper
-                        if (votingExtraInfo) votingExtraInfo.innerHTML += `
-                            <div class="w-full">
-                                <p class="text-xs text-gray-500 mb-1 font-bold">LIVE TALLY: ${totalVotes} Votes</p>
-                                <div class="flex h-3 rounded-full overflow-hidden bg-red-200 shadow-inner">
-                                    <div style="width: ${yesPct}%" class="bg-green-500 transition-all duration-500 ease-out"></div>
-                                </div>
-                                <div class="flex justify-between text-xs font-semibold mt-1">
-                                    <span class="text-green-600">${yesPct}% Yes</span>
-                                    <span class="text-red-600">${noPct}% No</span>
-                                </div>
+                        extraHtml += ` 
+                            <div id="user-vote-msg">
+                                <p class="text-center text-sm text-gray-500 font-medium">
+                                    You voted: <span class="font-bold text-${userVote === 'Yes' ? 'green' : 'red'}-600">${userVote}</span>. Waiting for resolution.
+                                </p>
                             </div>
                         `;
                     }
+                    extraHtml += `
+                        <div class="w-full">
+                            <p id="live-tally-label" class="text-xs text-gray-500 mb-1 font-bold">LIVE TALLY: ${totalVotes} Votes</p>
+                            <div class="flex h-3 rounded-full overflow-hidden bg-red-200 shadow-inner">
+                                <div id="live-tally-bar" style="width: ${yesPct}%" class="bg-green-500 transition-all duration-500 ease-out"></div>
+                            </div>
+                            <div class="flex justify-between text-xs font-semibold mt-1">
+                                <span id="live-tally-pct-yes" class="text-green-600">${yesPct}% Yes</span>
+                                <span id="live-tally-pct-no" class="text-red-600">${noPct}% No</span>
+                            </div>
+                        </div>
+                    `;
+                    votingExtraInfo.innerHTML = extraHtml;
                 }
-            } else {
-                textEl.textContent = "Waiting for a live question...";
             }
         }
 
@@ -3045,22 +3143,27 @@
                 // --- START: MODIFICATION PER USER REQUEST ---
                 let promptToDisplay = activePrompt || latestResolvedPrompt;
 
-                // Per your request: When a new prompt is created (activePrompt exists),
-                // we will first "delete" the old resolved prompt's UI by
-                // clearing the container, and then render the new active prompt.
+                // Check what is currently displayed in the DOM
+                const votingSection = document.getElementById('voting-section');
+                const currentDisplayedId = votingSection ? votingSection.dataset.promptId : null;
+
+                // LOGIC FIX:
+                // Only do the "clear and wait" transition if the prompt ID has CHANGED.
+                // If it's the same ID (just a vote count update), update immediately.
                 if (activePrompt) {
-                    // 1. "Delete" the old UI (by rendering null, which shows "Waiting...")
-                    renderGamePrompt(null);
-                    
-                    // 2. Use a brief timeout to allow the UI to clear
-                    //    before rendering the new active prompt.
-                    setTimeout(() => {
-                        // Re-check: only render if the active prompt is still the one we expect
-                        // This prevents a race condition if the prompt is resolved *very* quickly
-                        if (document.getElementById('prompt-text').textContent === "Waiting for a live question...") {
-                             renderGamePrompt(activePrompt);
-                        }
-                    }, 100); // 100ms delay to make the transition clear
+                    if (currentDisplayedId && currentDisplayedId === activePrompt.id) {
+                        // SAME PROMPT: Update immediately (no flash)
+                        renderGamePrompt(activePrompt);
+                    } else {
+                        // NEW PROMPT: Clear old UI first, then show new one
+                        renderGamePrompt(null);
+                        setTimeout(() => {
+                            // Re-check: only render if the active prompt is still the one we expect
+                            if (document.getElementById('prompt-text').textContent === "Waiting for a live question...") {
+                                    renderGamePrompt(activePrompt);
+                            }
+                        }, 100);
+                    }
                 } else {
                     // No active prompt, so just show the latest resolved one or "Waiting..."
                     renderGamePrompt(promptToDisplay);
