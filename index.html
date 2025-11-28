@@ -1830,21 +1830,46 @@
                     return;
                 }
                 
-                // --- START: NEW Guard ---
                 // Check if the prompt is already resolved.
                 if (promptSnap.data().isResolved) {
-                    console.log(`Prompt ${promptId} is already resolved to '${promptSnap.data().answer}'. Auto-resolve call for '${answer}' skipped.`);
-                    return; // Already done, do nothing
+                    console.log(`Prompt ${promptId} is already resolved. Skipping.`);
+                    return; 
                 }
-                // --- END: NEW Guard ---
+
+                // --- START: NEW SCORING LOGIC ---
+                // Calculate points based on the percentage of the OPPOSING (incorrect) vote.
+                const pData = promptSnap.data();
+                const yesCount = pData.yesCount || 0;
+                const noCount = pData.noCount || 0;
+                const totalVotes = yesCount + noCount;
+                
+                let pointsForWin = 1; // Default to 1 point minimum
+                
+                if (totalVotes > 0) {
+                    if (answer === 'Yes') {
+                        // Answer is Yes. Points = Percentage of people who voted No (The losers).
+                        // e.g., 30 Yes, 70 No. Answer Yes. Points = (70/100)*100 = 70.
+                        pointsForWin = Math.round((noCount / totalVotes) * 100);
+                    } else if (answer === 'No') {
+                        // Answer is No. Points = Percentage of people who voted Yes (The losers).
+                        pointsForWin = Math.round((yesCount / totalVotes) * 100);
+                    }
+                }
+                
+                // Ensure at least 1 point is awarded
+                pointsForWin = Math.max(1, pointsForWin);
+                // --- END: NEW SCORING LOGIC ---
 
                 const gameId = promptSnap.data().gameId;
                 await updateDoc(promptDocRef, {
                     isResolved: true,
                     answer: answer,
-                    resolvedAt: new Date().toISOString()
+                    resolvedAt: new Date().toISOString(),
+                    pointsAwarded: pointsForWin // Save for reference
                 });
-                showMessageBox("Prompt Resolved", `The prompt has been resolved with answer: ${answer}. Updating scores...`);
+                
+                showMessageBox("Prompt Resolved", `The prompt has been resolved to: ${answer}.\n\nPoints Awarded: ${pointsForWin} (based on opposing vote %).`);
+                
                 const votesColRef = getPromptVotesColRef(db, promptId);
                 const votesSnapshot = await getDocs(votesColRef);
                 if (votesSnapshot.empty) {
@@ -1863,14 +1888,17 @@
                         nicknameMap.set(doc.id, doc.data().nickname);
                     });
                 }
-                console.log("Fetched nicknames for voters:", nicknameMap);
+                
                 const scoreBatch = writeBatch(db);
                 const leaderboardColRef = getLeaderboardColRef(db, gameId); 
                 votesSnapshot.forEach(voteDoc => {
                     const userId = voteDoc.id;
                     const userVote = voteDoc.data().vote;
                     const isCorrect = userVote === answer;
-                    const scoreIncrementVal = isCorrect ? 1 : 0;
+                    
+                    // USE CALCULATED POINTS
+                    const scoreIncrementVal = isCorrect ? pointsForWin : 0;
+                    
                     const correctIncrementVal = isCorrect ? 1 : 0;
                     const incorrectIncrementVal = isCorrect ? 0 : 1;
                     const username = nicknameMap.get(userId) || `User...${userId.substring(userId.length - 4)}`;
@@ -1889,35 +1917,7 @@
                 showMessageBox("Score Update Error", `Failed to update scores. Error: ${error.message}`);
             }
         }
-        
-        // ... (handleDeletePrompt is unchanged)
-        async function handleDeletePrompt(promptId) {
-            if (!isAuthReady) {
-                showMessageBox("Error", "Authentication not ready.");
-                return;
-            }
-            console.log(`Attempting to delete prompt: ${promptId}`);
-            const promptDocRef = doc(getGamePromptsColRef(db), promptId);
-            const votesColRef = getPromptVotesColRef(db, promptId);
-            try {
-                const votesSnapshot = await getDocs(votesColRef);
-                if (!votesSnapshot.empty) {
-                    const batch = writeBatch(db);
-                    votesSnapshot.docs.forEach(voteDoc => {
-                        batch.delete(voteDoc.ref);
-                    });
-                    await batch.commit();
-                    console.log(`Deleted ${votesSnapshot.size} votes for prompt ${promptId}.`);
-                }
-                await deleteDoc(promptDocRef);
-                showMessageBox("Prompt Deleted", `The prompt and all its associated votes have been deleted.`);
-            } catch (error) {
-                console.error(`Error deleting prompt ${promptId}:`, error);
-                showMessageBox("Delete Error", `Failed to delete prompt. Error: ${error.message}`);
-            }
-        }
-        
-        // START: NEW Play-by-Play functions
+        // --- END: MODIFIED handleSetAnswer ---
         /**
          * NEW: Renders the play-by-play data into the detail view.
          */
