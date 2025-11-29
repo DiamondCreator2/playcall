@@ -968,8 +968,14 @@
             // Get situational data like down & yards
             const situation = competition.situation;
             let downDistanceText = null;
-            if (situation && situation.downDistanceText) {
-                downDistanceText = situation.downDistanceText;
+            let lastPlayText = null; // NEW: Capture last play text
+            if (situation) {
+                if (situation.downDistanceText) {
+                    downDistanceText = situation.downDistanceText;
+                }
+                if (situation.lastPlay && situation.lastPlay.text) { // NEW: Extract text
+                    lastPlayText = situation.lastPlay.text;
+                }
             }
             // --- END: NEW ---
             const competitors = competition.competitors;
@@ -1014,7 +1020,7 @@
             const uniqueId = competition.id || event.id;
             return {
                 id: `${league}-${uniqueId}`, 
-                rawEventId: event.id, // <-- START: NEW
+                rawEventId: event.id, 
                 league: league,
                 status: gameStatus,
                 time: displayTime,
@@ -1024,7 +1030,8 @@
                 awayScore: parseInt(away.score) || 0,
                 followers: 0, 
                 statusDetail: statusText,
-                downDistanceText: downDistanceText, // <-- NEW: Add to game object
+                downDistanceText: downDistanceText, 
+                lastPlayText: lastPlayText, // NEW: Add to returned object
             };
         }
         // END: MODIFIED transformEspnGame
@@ -1756,9 +1763,29 @@
                     const originalDownText = activePromptInfo.downDistanceText;
                     const currentDownText = game.downDistanceText;
 
+                    // GUARD 1: If currentDownText is missing/null, the API might be transitioning. 
+                    // Do NOT resolve "No" yet. Wait for valid data.
+                    if (!currentDownText) continue;
+
                     // Detect if the specific play description changed (e.g. "3rd & 5" -> "1st & 10")
                     if (currentDownText !== originalDownText) {
                         
+                        // GUARD 2: Timeout Protection
+                        // If the text changed (or API fluttered) but the last play was just a Timeout,
+                        // and the Down number (3rd, 4th) is the same, assume the play hasn't run yet.
+                        const isTimeout = (game.lastPlayText && game.lastPlayText.toLowerCase().includes('timeout')) || 
+                                          (currentDownText.toLowerCase().includes('timeout'));
+
+                        if (isTimeout) {
+                            const originalDown = originalDownText ? originalDownText.split(' ')[0] : ''; // e.g. "3rd"
+                            const currentDown = currentDownText.split(' ')[0]; // e.g. "3rd"
+
+                            if (originalDown === currentDown) {
+                                console.log(`Ignored auto-resolve for ${game.id} due to Timeout on same down.`);
+                                continue; // Skip resolution logic for this cycle
+                            }
+                        }
+
                         let answer = 'No'; // Default to No (did not convert/score on *that* play)
                         
                         // CHECK 1: Did the score increase? (Touchdown or Field Goal)
