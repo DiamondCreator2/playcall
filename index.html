@@ -449,7 +449,8 @@
                 <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                 Back to Feed
             </button>
-            <div id="detail-content" class="bg-white p-8 rounded-xl shadow-2xl">
+            <!-- MODIFIED: Added 'relative' class to allow absolute positioning of the sound toggle -->
+            <div id="detail-content" class="relative bg-white p-8 rounded-xl shadow-2xl">
                 <!-- Game details and chat mock injected here -->
             </div>
         </div>
@@ -672,6 +673,11 @@
         let currentView = 'scores'; // NEW: Tracks the current active view
         const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
         
+        // --- START: NEW Sound State ---
+        // Initialize from local storage, default to true if not set
+        let isSoundEnabled = localStorage.getItem('playCall_soundEnabled') !== 'false';
+        // --- END: NEW Sound State ---
+
         // --- START: NEW Timer Global ---
         let voteTimerInterval = null; 
         // --- END: NEW Timer Global ---
@@ -3266,8 +3272,26 @@
             switchView('detail');
             const detailContent = document.getElementById('detail-content');
             
+            // --- START: NEW Sound Button Icons ---
+            const iconSpeakerWave = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                    <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 6.5 6.5 0 000-9.192.75.75 0 010-1.06z" />
+                </svg>`;
+            
+            const iconSpeakerX = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                    <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM17.78 9.22a.75.75 0 10-1.06 1.06L18.44 12l-1.72 1.72a.75.75 0 101.06 1.06l1.72-1.72 1.72 1.72a.75.75 0 101.06-1.06L20.56 12l1.72-1.72a.75.75 0 10-1.06-1.06l-1.72 1.72-1.72-1.72z" />
+                </svg>`;
+            // --- END: NEW Sound Button Icons ---
+
             // --- START MODIFICATION: Added IDs to score and time elements ---
             detailContent.innerHTML = `
+                <!-- START: NEW Sound Toggle Button -->
+                <button id="toggle-sound-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition duration-150 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300" title="${isSoundEnabled ? 'Mute Sound' : 'Enable Sound'}">
+                    ${isSoundEnabled ? iconSpeakerWave : iconSpeakerX}
+                </button>
+                <!-- END: NEW Sound Toggle Button -->
+
                 <div class="flex flex-col items-center text-center">
                     <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
                     <h3 class="text-5xl font-black text-gray-900 mb-8">
@@ -3332,6 +3356,22 @@
             `;
             // --- END MODIFICATION ---
 
+            // --- START: NEW Sound Toggle Logic ---
+            const soundBtn = document.getElementById('toggle-sound-btn');
+            if (soundBtn) {
+                soundBtn.addEventListener('click', () => {
+                    isSoundEnabled = !isSoundEnabled;
+                    localStorage.setItem('playCall_soundEnabled', isSoundEnabled);
+                    
+                    // Update Icon & Title
+                    soundBtn.innerHTML = isSoundEnabled ? iconSpeakerWave : iconSpeakerX;
+                    soundBtn.title = isSoundEnabled ? 'Mute Sound' : 'Enable Sound';
+                    
+                    console.log(`Sound toggled: ${isSoundEnabled ? 'ON' : 'OFF'}`);
+                });
+            }
+            // --- END: NEW Sound Toggle Logic ---
+
             // START: NEW Fetch Play-by-Play
             // MODIFICATION: Delay the PBP fetch slightly to make the view feel faster.
             // Clear any existing poll just in case (e.g., rapid clicking)
@@ -3395,7 +3435,8 @@
                         // --- START: NEW Sound Trigger ---
                         // Play sound when a new prompt is detected
                         const pingSound = document.getElementById('prompt-ping-sound');
-                        if (pingSound) {
+                        // MODIFIED: Check isSoundEnabled flag
+                        if (pingSound && isSoundEnabled) {
                             pingSound.currentTime = 0; // Reset to start
                             // We catch the error because browsers sometimes block autoplay if the user hasn't interacted yet
                             pingSound.play().catch(e => console.log("Ping sound blocked by browser:", e));
