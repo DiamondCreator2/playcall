@@ -96,7 +96,8 @@
     </div>
 
     <!-- --- START: NEW 'beforeunload' handler --- -->
-    <script type(text/javascript)>
+    <!-- FIXED: Corrected type attribute syntax -->
+    <script type="text/javascript">
         /**
          * Best-effort attempt to set status to 'Offline' when the window closes.
          * This is NOT guaranteed to run or complete, as browsers limit
@@ -609,10 +610,10 @@
                     </button>
                 </div>
             </div>
-
-        </div>
-
-    </main>
+    <!-- START: NEW Audio Element for Prompt Ping -->
+    <!-- Using a pleasant notification sound -->
+    <audio id="prompt-ping-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-positive-notification-951.mp3" preload="auto"></audio>
+    <!-- END: NEW Audio Element -->
 
     <!-- Firebase SDK Imports -->
     <script type="module">
@@ -1515,6 +1516,31 @@
         }
         // END: MODIFIED renderFollowedGames
         
+        // --- START: NEW handleDeletePrompt ---
+        // Defined here to ensure it's available for renderAdminPrompts
+        async function handleDeletePrompt(promptId) {
+            if (!isAuthReady) {
+                 showMessageBox("Error", "Auth not ready.");
+                 return;
+            }
+            
+            showConfirmBox(
+                "Delete Prompt", 
+                "Are you sure you want to delete this prompt history? This cannot be undone.",
+                async () => {
+                    try {
+                        const promptDocRef = doc(getGamePromptsColRef(db), promptId);
+                        await deleteDoc(promptDocRef);
+                        console.log(`Prompt ${promptId} successfully deleted.`);
+                    } catch (error) {
+                        console.error("Error deleting prompt:", error);
+                        showMessageBox("Delete Error", `Failed to delete prompt. Error: ${error.message}`);
+                    }
+                }
+            );
+        }
+        // --- END: NEW handleDeletePrompt ---
+
         // ... (renderAdminPrompts is unchanged)
         function renderAdminPrompts() {
             if (unsubscribePromptsAdmin) {
@@ -1750,11 +1776,12 @@
                 // --- START: NEW Trigger Conditions ---
                 const downText = game.downDistanceText || '';
                 const isThirdDown = downText.startsWith('3rd');
-                const isFourthDown = downText.startsWith('4th');
+                // REMOVED: const isFourthDown = downText.startsWith('4th');
                 const isFirstAndGoal = downText.startsWith('1st') && downText.includes('Goal');
                 
                 // Combine them: We want to prompt on any of these high-leverage situations
-                const isTriggerSituation = isThirdDown || isFourthDown || isFirstAndGoal;
+                // MODIFIED: Removed isFourthDown from trigger list
+                const isTriggerSituation = isThirdDown || isFirstAndGoal;
                 // --- END: NEW Trigger Conditions ---
 
                 if (activePromptInfo) {
@@ -1773,7 +1800,8 @@
                         // GUARD 2: Timeout Protection
                         // If the text changed (or API fluttered) but the last play was just a Timeout,
                         // and the Down number (3rd, 4th) is the same, assume the play hasn't run yet.
-                        const isTimeout = (game.lastPlayText && game.lastPlayText.toLowerCase().includes('timeout')) || 
+                        const lastPlay = game.lastPlayText ? game.lastPlayText.toLowerCase() : '';
+                        const isTimeout = lastPlay.includes('timeout') || 
                                           (currentDownText.toLowerCase().includes('timeout'));
 
                         if (isTimeout) {
@@ -1796,13 +1824,17 @@
                         // CHECK 2: Did they get a fresh set of downs?
                         const gainedFirstDown = currentDownText && currentDownText.startsWith('1st');
 
-                        if (scoreChanged || gainedFirstDown) {
+                        // CHECK 3: Was it a punt?
+                        // If it was a punt, it's a failed conversion (No), even if the next text is "1st Down" (for the other team).
+                        const isPunt = lastPlay.includes('punt');
+
+                        if (!isPunt && (scoreChanged || gainedFirstDown)) {
                             answer = 'Yes';
                         }
                         
                         console.log(`Auto-resolving prompt ${activePromptInfo.promptId} for ${game.id}. 
                                      Play: '${originalDownText}' -> '${currentDownText || 'N/A'}'. 
-                                     Score Change: ${scoreChanged}. 1st Down: ${gainedFirstDown}. 
+                                     Score Change: ${scoreChanged}. 1st Down: ${gainedFirstDown}. Punt: ${isPunt}.
                                      Result: ${answer}`);
                         
                         // Call handleSetAnswer. This will update scores.
@@ -1833,13 +1865,11 @@
 
             if (downText.startsWith('3rd')) {
                 question = `Will they convert this 3rd Down?`;
-            } else if (downText.startsWith('4th')) {
-                // 4th down implies "Going for it" OR "Field Goal"
-                question = `Will they convert or score on 4th Down?`;
             } else if (downText.startsWith('1st') && downText.includes('Goal')) {
                 // 1st & Goal implies immediate scoring threat
                 question = `Will they score a TD on this play?`;
             }
+            // REMOVED: 4th down question generation
             // --- END: NEW Question Generation ---
 
             // --- START: NEW Snapshot Data ---
@@ -3361,6 +3391,17 @@
                         renderGamePrompt(activePrompt);
                     } else {
                         // NEW PROMPT: Clear old UI first, then show new one
+                        
+                        // --- START: NEW Sound Trigger ---
+                        // Play sound when a new prompt is detected
+                        const pingSound = document.getElementById('prompt-ping-sound');
+                        if (pingSound) {
+                            pingSound.currentTime = 0; // Reset to start
+                            // We catch the error because browsers sometimes block autoplay if the user hasn't interacted yet
+                            pingSound.play().catch(e => console.log("Ping sound blocked by browser:", e));
+                        }
+                        // --- END: NEW Sound Trigger ---
+
                         renderGamePrompt(null);
                         setTimeout(() => {
                             // Re-check: only render if the active prompt is still the one we expect
