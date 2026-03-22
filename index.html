@@ -432,14 +432,22 @@
 
                 <!-- Status and Search (Bottom Row) -->
                 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-3 sm:space-y-0 w-full">
-                    <div class="flex items-center space-x-2 w-full sm:w-auto">
-                        <label for="status-filter" class="font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Status:</label>
-                        <select id="status-filter" class="border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500 w-full sm:w-auto">
-                            <option value="All">All</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Final">Final</option>
-                        </select>
+                    <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <div class="flex items-center space-x-2">
+                            <label for="status-filter" class="font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Status:</label>
+                            <select id="status-filter" class="border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500">
+                                <option value="All">All</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Scheduled">Scheduled</option>
+                                <option value="Final">Final</option>
+                            </select>
+                        </div>
+                        
+                        <!-- NEW: Card Size Toggle -->
+                        <div class="flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200">
+                            <button id="size-normal-btn" class="px-3 py-1.5 text-xs font-bold rounded-md transition-all">Normal</button>
+                            <button id="size-small-btn" class="px-3 py-1.5 text-xs font-bold rounded-md transition-all">Small</button>
+                        </div>
                     </div>
                     <input type="text" id="team-search" placeholder="Search team name..." class="border border-gray-300 rounded-lg p-2 focus:ring-red-500 focus:border-red-500 w-full sm:w-80">
                 </div>
@@ -680,10 +688,11 @@
         let currentView = 'scores'; // NEW: Tracks the current active view
         const ADMIN_EMAIL = 'diamond@gmail.com'; // NEW: Admin email constant
         
-        // --- START: NEW Sound State ---
+        // --- START: NEW Sound & Display State ---
         // Initialize from local storage, default to true if not set
         let isSoundEnabled = localStorage.getItem('playCall_soundEnabled') !== 'false';
-        // --- END: NEW Sound State ---
+        let cardSizeMode = localStorage.getItem('playCall_cardSize') || 'normal'; // 'normal' or 'small'
+        // --- END: NEW Sound & Display State ---
 
         // --- START: NEW Timer Global ---
         let voteTimerInterval = null; 
@@ -1001,6 +1010,27 @@
         }
         // --- END: NEW 'beforeunload' handler (Module Scope) ---
 
+        // --- START: NEW Team Logo Cache ---
+        let teamLogoCache = JSON.parse(localStorage.getItem('playCall_teamLogos')) || {};
+        
+        function getCachedTeamLogo(teamId) {
+            return teamLogoCache[teamId] || null;
+        }
+        
+        function cacheTeamLogo(teamId, url) {
+            if (!teamId || !url) return;
+            if (teamLogoCache[teamId] !== url) {
+                teamLogoCache[teamId] = url;
+                try {
+                    localStorage.setItem('playCall_teamLogos', JSON.stringify(teamLogoCache));
+                } catch (e) {
+                    console.warn('LocalStorage full, clearing logo cache', e);
+                    teamLogoCache = { [teamId]: url }; // reset but keep the newest one
+                }
+            }
+        }
+        // --- END: NEW Team Logo Cache ---
+
         // --- API Data Fetching & Transformation ---
         // START: MODIFIED transformEspnGame
         function transformEspnGame(league, event) {
@@ -1025,6 +1055,23 @@
             const home = competitors.find(c => c.homeAway === 'home');
             const away = competitors.find(c => c.homeAway === 'away');
             if (!home || !away) return null;
+
+            // --- START: NEW Team Ranks ---
+            // Grabs the current rank if they are in the top 25 (99 usually means unranked in ESPN's API)
+            const homeRank = home.curatedRank && home.curatedRank.current > 0 && home.curatedRank.current <= 25 ? home.curatedRank.current : null;
+            const awayRank = away.curatedRank && away.curatedRank.current > 0 && away.curatedRank.current <= 25 ? away.curatedRank.current : null;
+            // --- END: NEW Team Ranks ---
+
+            // --- START: NEW Logo Extraction & Caching ---
+            let homeLogo = home.team.logo || '';
+            let awayLogo = away.team.logo || '';
+            
+            if (homeLogo) cacheTeamLogo(home.team.id, homeLogo);
+            else homeLogo = getCachedTeamLogo(home.team.id) || '';
+
+            if (awayLogo) cacheTeamLogo(away.team.id, awayLogo);
+            else awayLogo = getCachedTeamLogo(away.team.id) || '';
+            // --- END: NEW Logo Extraction & Caching ---
 
             // --- START MODIFICATION ---
             let statusText = event.status.type.detail || event.status.type.shortDetail || 'Scheduled';
@@ -1068,8 +1115,12 @@
                 time: displayTime,
                 homeTeam: home.team.shortDisplayName || home.team.displayName || home.team.abbreviation || 'Home',
                 homeScore: parseInt(home.score) || 0,
+                homeRank: homeRank, // NEW
+                homeLogo: homeLogo, // NEW: Include logo URL
                 awayTeam: away.team.shortDisplayName || away.team.displayName || away.team.abbreviation || 'Away',
                 awayScore: parseInt(away.score) || 0,
+                awayRank: awayRank, // NEW
+                awayLogo: awayLogo, // NEW: Include logo URL
                 followers: 0, 
                 statusDetail: statusText,
                 downDistanceText: downDistanceText, 
@@ -1285,6 +1336,63 @@
                 </button>`;
             const detailLink = `<a href="#" data-game-id="${game.id}" class="detail-link text-blue-600 hover:text-blue-800 text-sm font-medium mt-2 block">View Details & Chat</a>`;
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
+
+            // --- START: NEW Rank Displays ---
+            const awayRankHtml = game.awayRank ? `<span class="text-gray-500 font-bold mr-1 text-[0.85em]">#${game.awayRank}</span>` : '';
+            const homeRankHtml = game.homeRank ? `<span class="text-gray-500 font-bold mr-1 text-[0.85em]">#${game.homeRank}</span>` : '';
+            // --- END: NEW Rank Displays ---
+
+            // --- START: NEW Logo Displays ---
+            const awayLogoSmallHtml = game.awayLogo ? `<img src="${game.awayLogo}" class="w-4 h-4 inline-block mr-1.5 object-contain" alt="" onerror="this.style.display='none'">` : '';
+            const homeLogoSmallHtml = game.homeLogo ? `<img src="${game.homeLogo}" class="w-4 h-4 inline-block mr-1.5 object-contain" alt="" onerror="this.style.display='none'">` : '';
+            
+            const awayLogoHtml = game.awayLogo ? `<img src="${game.awayLogo}" class="w-6 h-6 inline-block mr-2 object-contain" alt="" onerror="this.style.display='none'">` : '';
+            const homeLogoHtml = game.homeLogo ? `<img src="${game.homeLogo}" class="w-6 h-6 inline-block mr-2 object-contain" alt="" onerror="this.style.display='none'">` : '';
+            // --- END: NEW Logo Displays ---
+
+            // --- START: NEW Small Mode Render ---
+            if (cardSizeMode === 'small') {
+                return `
+                    <div data-game-id="${game.id}" class="game-card bg-white p-3 rounded-xl shadow-sm border-t-4 ${borderColorClass} hover:shadow-md transition duration-300 flex flex-col justify-between h-full" style="cursor: pointer;">
+                        <div class="flex justify-between items-start mb-2 border-b border-gray-50 pb-2 gap-1">
+                            <div class="flex flex-col space-y-1 min-w-0 flex-1">
+                                <span class="text-[10px] font-extrabold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider self-start">${game.league}</span>
+                                <span class="text-xs font-bold ${statusColor} truncate w-full">
+                                    ${statusText} ${game.status !== 'Scheduled' && game.status !== 'Final' ? ' (' + game.time + ')' : ''}
+                                </span>
+                            </div>
+                            ${followButton.replace('px-3 py-1', 'px-2 py-1 text-[10px] whitespace-nowrap flex-shrink-0')}
+                        </div>
+                        <div class="space-y-1 mt-1 flex-1">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center flex-1 min-w-0 mr-2" title="${game.awayTeam}">
+                                    ${awayRankHtml}${awayLogoSmallHtml}
+                                    <span class="text-sm font-bold text-gray-800 truncate">${game.awayTeam}</span>
+                                </div>
+                                <span class="text-xl font-black ${awayScoreClass} flex-shrink-0">${game.status === 'Scheduled' ? '-' : game.awayScore}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center flex-1 min-w-0 mr-2" title="${game.homeTeam}">
+                                    ${homeRankHtml}${homeLogoSmallHtml}
+                                    <span class="text-sm font-bold text-gray-800 truncate">${game.homeTeam}</span>
+                                </div>
+                                <span class="text-xl font-black ${homeScoreClass} flex-shrink-0">${game.status === 'Scheduled' ? '-' : game.homeScore}</span>
+                            </div>
+                        </div>
+                        <div class="mt-2 pt-2 flex justify-between items-center border-t border-gray-50">
+                            <div class="text-xs text-gray-400 flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.98 5.98 0 0010 16a5.979 5.979 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
+                                </svg>
+                                ${followerCount}
+                            </div>
+                            <a href="#" data-game-id="${game.id}" class="detail-link text-blue-600 hover:text-blue-800 text-xs font-bold whitespace-nowrap">Details &rarr;</a>
+                        </div>
+                    </div>
+                `;
+            }
+            // --- END: NEW Small Mode Render ---
+
             return `
                 <div data-game-id="${game.id}" class="game-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${borderColorClass} hover:shadow-2xl transition duration-300" style="cursor: pointer;">
                     <div class="flex justify-between items-start mb-4">
@@ -1294,13 +1402,19 @@
                     <div class="space-y-4">
                         <div class="flex justify-between items-center border-b pb-2">
                             <div class="flex items-center space-x-3">
-                                <span class="text-lg font-bold text-gray-800">${game.awayTeam}</span>
+                                <div class="flex items-center">
+                                    ${awayRankHtml}${awayLogoHtml}
+                                    <span class="text-lg font-bold text-gray-800">${game.awayTeam}</span>
+                                </div>
                             </div>
                             ${awayScoreDisplay}
                         </div>
                         <div class="flex justify-between items-center">
                             <div class="flex items-center space-x-3">
-                                <span class="text-lg font-bold text-gray-800">${game.homeTeam}</span>
+                                <div class="flex items-center">
+                                    ${homeRankHtml}${homeLogoHtml}
+                                    <span class="text-lg font-bold text-gray-800">${game.homeTeam}</span>
+                                </div>
                             </div>
                             ${homeScoreDisplay}
                         </div>
@@ -1352,6 +1466,11 @@
                 descriptionText = `Final (${game.time})`; 
             }
             const followerCount = gameMetadata[game.id]?.followerCount || 0;
+            
+            // NEW: Add logos for dashboard cards
+            const awayLogoHtml = game.awayLogo ? `<img src="${game.awayLogo}" class="w-5 h-5 inline-block mr-1.5 object-contain align-middle" alt="" onerror="this.style.display='none'">` : '';
+            const homeLogoHtml = game.homeLogo ? `<img src="${game.homeLogo}" class="w-5 h-5 inline-block mr-1.5 object-contain align-middle" alt="" onerror="this.style.display='none'">` : '';
+
             return `
                 <div class="bg-white p-6 rounded-xl shadow-md border-l-4 ${borderColorClass} flex flex-col justify-between w-full sm:w-80 flex-shrink-0 hover:shadow-xl transition duration-150">
                     <div class="cursor-pointer dashboard-detail-link hover:bg-gray-50 p-2 -m-2 rounded-lg" data-game-id="${game.id}">
@@ -1360,8 +1479,10 @@
                         </div>
                         <div class="text-xl font-extrabold">
                             <p class="mb-1">
-                                <span class="${awayScoreClass}">${game.awayTeam} ${game.awayScore}</span> vs. 
-                                <span class="${homeScoreClass}">${game.homeScore} ${game.homeTeam}</span>
+                                <span class="${awayScoreClass}">${awayLogoHtml}${game.awayTeam} ${game.awayScore}</span> vs. 
+                            </p>
+                            <p class="mb-1">
+                                <span class="${homeScoreClass}">${homeLogoHtml}${game.homeTeam} ${game.homeScore}</span>
                             </p>
                         </div>
                         <div class="flex flex-col mt-2">
@@ -1449,12 +1570,26 @@
                             const lastSeenDate = new Date(effectiveLastSeen);
                             // Check if it's a valid date
                             if (!isNaN(lastSeenDate.getTime())) {
-                                const diffMs = now - lastSeenDate;
-                                const diffHours = Math.floor(diffMs / 3600000);
-                                if (diffHours < 24) {
-                                    lastSeenText = `Today at ${lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                                const diffMs = Math.max(0, now - lastSeenDate.getTime());
+                                const diffSeconds = Math.floor(diffMs / 1000);
+                                const diffMinutes = Math.floor(diffSeconds / 60);
+                                const diffHours = Math.floor(diffMinutes / 60);
+                                const diffDays = Math.floor(diffHours / 24);
+
+                                if (diffSeconds < 60) {
+                                    lastSeenText = `${Math.max(1, diffSeconds)} second${diffSeconds !== 1 ? 's' : ''} ago`;
+                                } else if (diffMinutes < 60) {
+                                    lastSeenText = `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+                                } else if (diffHours < 24) {
+                                    lastSeenText = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                                } else if (diffDays < 30) {
+                                    lastSeenText = `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
                                 } else {
                                     lastSeenText = lastSeenDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                    // Add the year if it was from a previous year
+                                    if (lastSeenDate.getFullYear() !== new Date().getFullYear()) {
+                                        lastSeenText += `, ${lastSeenDate.getFullYear()}`;
+                                    }
                                 }
                             }
                         } catch(e) { /* Use default */ }
@@ -1508,6 +1643,16 @@
         function renderScores() {
             if (!isAuthReady) return; 
             const container = document.getElementById('scores-container');
+            
+            // --- START: NEW Dynamic Grid Columns ---
+            // Double the grid columns when in "small" mode to make cards half the width
+            if (cardSizeMode === 'small') {
+                container.className = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4";
+            } else {
+                container.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6";
+            }
+            // --- END: NEW Dynamic Grid Columns ---
+
             const filterLeague = document.getElementById('league-filter').value;
             const filterStatus = document.getElementById('status-filter').value;
             const searchQuery = document.getElementById('team-search').value.toLowerCase(); 
@@ -3387,6 +3532,13 @@
             // --- END: NEW Sound Button Icons ---
 
             // --- START MODIFICATION: Added IDs to score and time elements ---
+            const awayRankHtml = game.awayRank ? `<span class="text-gray-500 font-bold mr-2 text-[0.8em]">#${game.awayRank}</span>` : '';
+            const homeRankHtml = game.homeRank ? `<span class="text-gray-500 font-bold mr-2 text-[0.8em]">#${game.homeRank}</span>` : '';
+
+            // NEW: Detail View Logos
+            const awayLogoDetailHtml = game.awayLogo ? `<img src="${game.awayLogo}" class="w-16 h-16 mx-auto mb-3 object-contain" alt="" onerror="this.style.display='none'">` : '';
+            const homeLogoDetailHtml = game.homeLogo ? `<img src="${game.homeLogo}" class="w-16 h-16 mx-auto mb-3 object-contain" alt="" onerror="this.style.display='none'">` : '';
+
             detailContent.innerHTML = `
                 <!-- START: NEW Sound Toggle Button -->
                 <button id="toggle-sound-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition duration-150 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300" title="${isSoundEnabled ? 'Mute Sound' : 'Enable Sound'}">
@@ -3397,11 +3549,12 @@
                 <div class="flex flex-col items-center text-center">
                     <span class="text-sm font-semibold text-red-500 bg-red-100 px-3 py-1 rounded-full mb-4">${game.league}</span>
                     <h3 class="text-5xl font-black text-gray-900 mb-8">
-                        ${game.awayTeam} <span class="text-gray-400 font-normal mx-4">@</span> ${game.homeTeam}
+                        ${awayRankHtml}${game.awayTeam} <span class="text-gray-400 font-normal mx-4">@</span> ${homeRankHtml}${game.homeTeam}
                     </h3>
                     <div class="flex space-x-8 items-center bg-gray-50 p-6 rounded-xl shadow-inner w-full max-w-lg">
                         <div class="flex-1">
-                            <p class="text-xl font-semibold text-gray-600">${game.awayTeam}</p>
+                            ${awayLogoDetailHtml}
+                            <p class="text-xl font-semibold text-gray-600 flex justify-center items-center">${awayRankHtml}${game.awayTeam}</p>
                             <p id="detail-away-score" class="text-6xl font-extrabold text-gray-900">${game.awayScore}</p>
                         </div>
                         <div class="text-center">
@@ -3418,7 +3571,8 @@
 
                         </div>
                         <div class="flex-1">
-                            <p class="text-xl font-semibold text-gray-600">${game.homeTeam}</p>
+                            ${homeLogoDetailHtml}
+                            <p class="text-xl font-semibold text-gray-600 flex justify-center items-center">${homeRankHtml}${game.homeTeam}</p>
                             <p id="detail-home-score" class="text-6xl font-extrabold text-gray-900">${game.homeScore}</p>
                         </div>
                     </div>
@@ -4505,6 +4659,44 @@
         document.getElementById('google-login-btn').addEventListener('click', handleGoogleSignIn);
         document.getElementById('google-register-btn').addEventListener('click', handleGoogleSignIn);
         
+        // NEW: Setup Card Size Toggle Buttons
+        function setupCardSizeToggle() {
+            const normalBtn = document.getElementById('size-normal-btn');
+            const smallBtn = document.getElementById('size-small-btn');
+            if (!normalBtn || !smallBtn) return;
+            
+            const updateBtnStyles = () => {
+                if (cardSizeMode === 'normal') {
+                    normalBtn.classList.add('bg-white', 'shadow-sm', 'text-gray-800');
+                    normalBtn.classList.remove('text-gray-500', 'hover:bg-gray-200');
+                    smallBtn.classList.add('text-gray-500', 'hover:bg-gray-200');
+                    smallBtn.classList.remove('bg-white', 'shadow-sm', 'text-gray-800');
+                } else {
+                    smallBtn.classList.add('bg-white', 'shadow-sm', 'text-gray-800');
+                    smallBtn.classList.remove('text-gray-500', 'hover:bg-gray-200');
+                    normalBtn.classList.add('text-gray-500', 'hover:bg-gray-200');
+                    normalBtn.classList.remove('bg-white', 'shadow-sm', 'text-gray-800');
+                }
+            };
+            
+            updateBtnStyles(); // initial call
+            
+            normalBtn.addEventListener('click', () => {
+                cardSizeMode = 'normal';
+                localStorage.setItem('playCall_cardSize', 'normal');
+                updateBtnStyles();
+                renderScores();
+            });
+            
+            smallBtn.addEventListener('click', () => {
+                cardSizeMode = 'small';
+                localStorage.setItem('playCall_cardSize', 'small');
+                updateBtnStyles();
+                renderScores();
+            });
+        }
+        
+        setupCardSizeToggle(); // Run setup immediately
 
         // Initialize the view and start fetching data when the window loads
         window.onload = initFirebaseAndLoadData;
