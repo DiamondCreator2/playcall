@@ -689,6 +689,12 @@
         let voteTimerInterval = null; 
         // --- END: NEW Timer Global ---
  
+        // --- START: NEW Presence Globals ---
+        let presenceInterval = null;
+        let localFeedRenderInterval = null;
+        let latestFriendProfiles = [];
+        // --- END: NEW Presence Globals ---
+
         // --- START: MODIFIED Auto-Prompt State ---
         let autoPromptEnabledGames = new Set(); // Stores gameIds admin wants to auto-prompt
         // MODIFIED: Now stores score snapshots to detect points (TDs/FGs)
@@ -880,7 +886,8 @@
 
             try {
                 const profileDocRef = getUserPublicProfileDocRef(db, userId);
-                await updateDoc(profileDocRef, { status: newStatus });
+                // MODIFIED: Also stamp lastOnline on status changes
+                await updateDoc(profileDocRef, { status: newStatus, lastOnline: Date.now() });
                 console.log("User status updated:", newStatus.text);
             } catch (error) {
                 // This might fail if the doc doesn't exist yet (race condition on login),
@@ -888,7 +895,7 @@
                 if (error.code === 'no-such-entity' || error.code === 'not-found') {
                     try {
                         const profileDocRef = getUserPublicProfileDocRef(db, userId);
-                        await setDoc(profileDocRef, { status: newStatus }, { merge: true });
+                        await setDoc(profileDocRef, { status: newStatus, lastOnline: Date.now() }, { merge: true });
                         console.log("User status set (merge):", newStatus.text);
                     } catch (e) {
                         console.error("Failed to set (merge) user status:", e);
@@ -899,6 +906,24 @@
             }
         }
         // END: NEW User Status Update Function
+
+        // --- START: NEW Heartbeat Function ---
+        /**
+         * Updates the lastOnline timestamp periodically to show true presence.
+         */
+        async function updateHeartbeat() {
+            if (isAnonymous || !userId || !db) return;
+            // Pause heartbeat if tab is hidden (they will automatically appear offline to friends)
+            if (document.visibilityState === 'hidden') return;
+            
+            try {
+                const profileDocRef = getUserPublicProfileDocRef(db, userId);
+                await setDoc(profileDocRef, { lastOnline: Date.now() }, { merge: true });
+            } catch (e) {
+                console.error("Failed to update heartbeat:", e);
+            }
+        }
+        // --- END: NEW Heartbeat Function ---
 
         // --- Date Helper Functions ---
         // ... (getApiDate is unchanged)
@@ -930,6 +955,9 @@
                 // User came back to the tab
                 console.log(`Tab visible, restoring status for view: ${currentView}`);
                 
+                // Immediately ping heartbeat when coming back
+                updateHeartbeat();
+
                 // Check if we are on the detail view, as it has special status logic
                 if (currentGameIdInDetailView && currentView === 'detail') {
                     const game = gamesData.find(g => g.id === currentGameIdInDetailView);
@@ -1363,23 +1391,42 @@
         function renderFriendActivityFeed(friendProfiles) {
             const container = document.getElementById('friend-activity-list');
             
+            // Store globally so the interval can re-render it
+            if (friendProfiles) {
+                latestFriendProfiles = friendProfiles;
+            } else {
+                friendProfiles = latestFriendProfiles;
+            }
+
             if (!friendProfiles || friendProfiles.length === 0) {
-                container.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-xl text-center text-gray-500">No friend activity to show. Add some friends to get started!</div>`;
+                if (container) container.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-xl text-center text-gray-500">No friend activity to show. Add some friends to get started!</div>`;
                 return;
             }
 
+            const now = Date.now();
+
             // Sort profiles: Online first, then by nickname
             friendProfiles.sort((a, b) => {
-                const statusA = a.status?.text || 'Offline';
-                const statusB = b.status?.text || 'Offline';
-                if (statusA === 'Offline' && statusB !== 'Offline') return 1;
-                if (statusA !== 'Offline' && statusB === 'Offline') return -1;
-                return a.nickname.localeCompare(b.nickname);
+                // Check if stale (no heartbeat in last 65 seconds)
+                const isStaleA = (now - (a.lastOnline || 0)) > 65000;
+                const isStaleB = (now - (b.lastOnline || 0)) > 65000;
+
+                const isOfflineA = (a.status?.text === 'Offline') || isStaleA;
+                const isOfflineB = (b.status?.text === 'Offline') || isStaleB;
+                
+                if (isOfflineA && !isOfflineB) return 1;
+                if (!isOfflineA && isOfflineB) return -1;
+                return (a.nickname || '').localeCompare(b.nickname || '');
             });
 
             const activityListHtml = friendProfiles.map(friend => {
                 const status = friend.status || { text: 'Offline', lastSeen: new Date(0).toISOString() }; // Default status
-                const isOffline = status.text === 'Offline';
+                
+                // True presence check
+                const lastOnlineTime = friend.lastOnline || 0;
+                const isStale = (now - lastOnlineTime) > 65000;
+                const isOffline = status.text === 'Offline' || isStale;
+                
                 const dotColor = isOffline ? 'bg-gray-400' : 'bg-green-500';
                 
                 let detailHtml;
@@ -1391,12 +1438,17 @@
 
                 if (isOffline) {
                     let lastSeenText = 'A while ago';
-                    if (status.lastSeen) {
+                    // Determine the best "last seen" time between explicit logout and last heartbeat
+                    const effectiveLastSeen = Math.max(
+                        lastOnlineTime,
+                        status.lastSeen ? new Date(status.lastSeen).getTime() : 0
+                    );
+
+                    if (effectiveLastSeen > 0) {
                         try {
-                            const lastSeenDate = new Date(status.lastSeen);
+                            const lastSeenDate = new Date(effectiveLastSeen);
                             // Check if it's a valid date
                             if (!isNaN(lastSeenDate.getTime())) {
-                                const now = new Date();
                                 const diffMs = now - lastSeenDate;
                                 const diffHours = Math.floor(diffMs / 3600000);
                                 if (diffHours < 24) {
@@ -3808,12 +3860,18 @@
             if (unsubscribeFriendsList) unsubscribeFriendsList(); // NEW
             if (unsubscribeFriendStatuses) unsubscribeFriendStatuses(); // START: NEW
             
+            // Clear Presence Intervals
+            if (presenceInterval) clearInterval(presenceInterval);
+            if (localFeedRenderInterval) clearInterval(localFeedRenderInterval);
+            
             unsubscribeGameMetadata = null;
             // unsubscribeFollowedGames = null;
             unsubscribeUserProfile = null;
             unsubscribeFriendRequests = null; // NEW
             unsubscribeFriendsList = null; // NEW
             unsubscribeFriendStatuses = null; // START: NEW
+            presenceInterval = null;
+            localFeedRenderInterval = null;
             
             // NEW: Clear friends list data
             currentFriends = {};
@@ -4031,6 +4089,7 @@
                     if (friendIds.length === 0) {
                         renderFriendActivityFeed([]); // Render empty state
                         unsubscribeFriendStatuses = null;
+                        if (localFeedRenderInterval) clearInterval(localFeedRenderInterval);
                         return; // No friends, nothing to listen to
                     }
 
@@ -4045,6 +4104,15 @@
                         });
                         console.log("Friend statuses updated:", friendProfiles);
                         renderFriendActivityFeed(friendProfiles); // Render the feed with new data
+
+                        // Restart local re-render interval to catch stale friends locally
+                        if (localFeedRenderInterval) clearInterval(localFeedRenderInterval);
+                        localFeedRenderInterval = setInterval(() => {
+                            if (document.getElementById('dashboard-view') && !document.getElementById('dashboard-view').classList.contains('hidden')) {
+                                renderFriendActivityFeed(); // Call without args to use latestFriendProfiles
+                            }
+                        }, 20000); // Re-check every 20s
+                        
                     }, (error) => {
                         console.error("Error listening to friend statuses:", error);
                         renderFriendActivityFeed([]); // Render empty on error
@@ -4261,6 +4329,12 @@
                         // START: NEW Set status to Online on login
                         if (!isAnonymous) {
                             await updateUserStatus({ text: 'Online' });
+                            
+                            // START: Set up the Heartbeat Interval
+                            if (presenceInterval) clearInterval(presenceInterval);
+                            updateHeartbeat(); // immediate ping
+                            presenceInterval = setInterval(updateHeartbeat, 30000); // ping every 30s
+                            
                             // --- START: NEW Add listener *only* for logged-in users ---
                             window.addEventListener('beforeunload', handleWindowClose);
                             // --- START: NEW Add visibility listener *only* for logged-in users ---
