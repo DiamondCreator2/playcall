@@ -5677,7 +5677,7 @@
             if (window.innerWidth < 640) return; // Handled by mobile menu
 
             // Measure available space in the flex container
-            const availableWidth = desktopNav.clientWidth - 40; // 40px buffer for the 3-dots button
+            const availableWidth = desktopNav.clientWidth - 40; // 40px buffer for the hamburger button
             let currentWidth = 0;
             let overflowIndex = -1;
 
@@ -5695,10 +5695,14 @@
             if (overflowIndex !== -1) {
                 moreWrapper.classList.remove('hidden');
                 moreWrapper.classList.add('flex');
-                for (let i = overflowIndex; i < navItems.length; i++) {
+                
+                // --- START: MODIFIED ---
+                // If any tab overflows, move ALL tabs into the dropdown menu
+                for (let i = 0; i < navItems.length; i++) {
                     const item = navItems[i];
                     moreMenu.appendChild(item);
                 }
+                // --- END: MODIFIED ---
             }
         }
         // --- END: NEW Dynamic Priority+ Navigation ---
