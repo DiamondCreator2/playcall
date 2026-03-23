@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- MODIFIED: Added maximum-scale and user-scalable to prevent pinch zooming -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Play Call Live</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,6 +13,7 @@
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
             padding-top: 64px; /* Space for fixed header */
+            touch-action: manipulation; /* NEW: Prevents double-tap to zoom on iOS/Android */
         }
         .admin-input {
             @apply border border-gray-300 rounded-md p-1 w-full text-sm focus:ring-blue-500 focus:border-blue-500;
@@ -78,9 +80,36 @@
             scrollbar-width: none;  /* Firefox */
         }
         /* --- END: NEW Hide scrollbar --- */
+
+        /* --- START: NEW Portrait Lock --- */
+        #portrait-lock-overlay {
+            display: none;
+        }
+        /* Only trigger on mobile devices turned sideways */
+        @media screen and (max-width: 896px) and (orientation: landscape) {
+            #portrait-lock-overlay {
+                display: flex !important;
+            }
+            body {
+                overflow: hidden !important; /* Prevent scrolling while overlay is up */
+            }
+        }
+        /* --- END: NEW Portrait Lock --- */
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
+
+    <!-- START: NEW Portrait Lock Overlay -->
+    <div id="portrait-lock-overlay" class="fixed inset-0 bg-gray-900 z-[9999] flex-col items-center justify-center text-white px-4 text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mb-6 animate-pulse text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <!-- Mobile phone rotation icon -->
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        <h2 class="text-3xl font-black mb-3">Please Rotate Your Device</h2>
+        <p class="text-gray-400 font-medium text-lg">Play Call Live is designed to be played in portrait mode.</p>
+    </div>
+    <!-- END: NEW Portrait Lock Overlay -->
 
     <!-- Custom Message Box Modal -->
     <div id="message-box-container" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300">
