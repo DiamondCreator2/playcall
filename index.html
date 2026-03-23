@@ -43,6 +43,39 @@
             text-align: center;
         }
 
+        /* --- START: NEW Dynamic Nav Styles --- */
+        #primary-nav-items .dynamic-nav-link {
+            color: #ffffff;
+            transition: color 0.15s;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #primary-nav-items .dynamic-nav-link:hover {
+            color: #FECACA; /* text-red-200 */
+        }
+        #primary-nav-items .dynamic-nav-link.active-link {
+            color: #F87171; /* text-red-400 */
+        }
+
+        #more-nav-menu .dynamic-nav-link {
+            display: block;
+            padding: 0.5rem 1rem;
+            color: #1F2937; /* text-gray-800 */
+            font-weight: 600;
+            transition: background-color 0.15s;
+            border-radius: 0.375rem;
+            margin: 0.25rem 0.5rem;
+            white-space: nowrap;
+        }
+        #more-nav-menu .dynamic-nav-link:hover {
+            background-color: #F3F4F6; /* text-gray-100 */
+        }
+        #more-nav-menu .dynamic-nav-link.active-link {
+            color: #DC2626; /* text-red-600 */
+            background-color: #FEF2F2; /* text-red-50 */
+        }
+        /* --- END: NEW Dynamic Nav Styles --- */
+
         /* --- START: NEW Notification Badge Style --- */
         .notification-badge {
             /* @apply absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-gray-900; */
@@ -80,36 +113,9 @@
             scrollbar-width: none;  /* Firefox */
         }
         /* --- END: NEW Hide scrollbar --- */
-
-        /* --- START: NEW Portrait Lock --- */
-        #portrait-lock-overlay {
-            display: none;
-        }
-        /* Only trigger on mobile devices turned sideways */
-        @media screen and (max-width: 896px) and (orientation: landscape) {
-            #portrait-lock-overlay {
-                display: flex !important;
-            }
-            body {
-                overflow: hidden !important; /* Prevent scrolling while overlay is up */
-            }
-        }
-        /* --- END: NEW Portrait Lock --- */
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-
-    <!-- START: NEW Portrait Lock Overlay -->
-    <div id="portrait-lock-overlay" class="fixed inset-0 bg-gray-900 z-[9999] flex-col items-center justify-center text-white px-4 text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mb-6 animate-pulse text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <!-- Mobile phone rotation icon -->
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        <h2 class="text-3xl font-black mb-3">Please Rotate Your Device</h2>
-        <p class="text-gray-400 font-medium text-lg">Play Call Live is designed to be played in portrait mode.</p>
-    </div>
-    <!-- END: NEW Portrait Lock Overlay -->
 
     <!-- Custom Message Box Modal -->
     <div id="message-box-container" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300">
@@ -220,7 +226,7 @@
             <div class="flex items-center justify-between h-16">
                 
                 <!-- 1. LEFT SIDE GROUP: Title/Logo + Desktop Links -->
-                <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-6 flex-1 min-w-0 pr-4">
                     
                     <!-- Title/Logo -->
                     <div class="flex items-center flex-shrink-0">
@@ -252,33 +258,35 @@
                         </span>
                     </div>
                     
-                    <!-- Desktop Navigation -->
-                    <nav id="desktop-nav" class="hidden sm:flex space-x-4">
-                        <a href="#" id="dashboard-link" class="nav-link text-red-400 hover:text-red-200 transition duration-150 ease-in-out font-semibold" style="display: none;">
-                            Dashboard
-                        </a>
-                        <a href="#" id="scores-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
-                            Live Scores
-                        </a>
-                        <a href="#" id="teams-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold">
-                            Teams
-                        </a>
-                        <a href="#" id="admin-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold" style="display: none;">
-                            Admin Panel
-                        </a>
-                        <!-- START: MODIFIED ACCOUNT LINK -->
-                        <a href="#" id="account-link" class="nav-link text-white hover:text-red-200 transition duration-150 ease-in-out font-semibold" style="display: none;">
-                            Account
-                            <!-- REMOVED BADGE SPAN -->
-                        </a>
-                        <!-- END: MODIFIED ACCOUNT LINK -->
+                    <!-- Desktop Navigation (MODIFIED FOR DROPDOWN OVERFLOW) -->
+                    <nav id="desktop-nav" class="hidden sm:flex flex-1 items-center overflow-hidden h-full min-w-0 relative">
+                        <div id="primary-nav-items" class="flex items-center space-x-4 h-full min-w-0">
+                            <a href="#" id="dashboard-link" class="dynamic-nav-link" style="display: none;">Dashboard</a>
+                            <a href="#" id="scores-link" class="dynamic-nav-link active-link">Live Scores</a>
+                            <a href="#" id="teams-link" class="dynamic-nav-link">Teams</a>
+                            <a href="#" id="admin-link" class="dynamic-nav-link" style="display: none;">Admin Panel</a>
+                            <a href="#" id="account-link" class="dynamic-nav-link" style="display: none;">Account</a>
+                        </div>
+
+                        <!-- Three Dots Dropdown -->
+                        <div id="more-nav-wrapper" class="relative hidden items-center ml-2 h-full flex-shrink-0">
+                            <button id="more-nav-btn" class="text-white hover:text-red-200 focus:outline-none p-1 rounded transition duration-150 h-full flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+                                </svg>
+                            </button>
+                            <!-- Dropdown Menu -->
+                            <div id="more-nav-menu" class="absolute top-full right-0 mt-1 w-48 bg-white rounded-lg shadow-2xl py-2 hidden z-50 border border-gray-100 flex-col">
+                                <!-- Overflow links injected here -->
+                            </div>
+                        </div>
                     </nav>
 
                 </div>
 
 
                 <!-- 2. RIGHT SIDE: Auth Status & Mobile Menu Button -->
-                <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-4 flex-shrink-0">
                     
                     <!-- NEW: Auth Status -->
                     <div id="auth-status" class="hidden sm:flex items-center space-x-3">
@@ -805,6 +813,10 @@
         let localFeedRenderInterval = null;
         let latestFriendProfiles = [];
         // --- END: NEW Presence Globals ---
+
+        // --- START: NEW Dynamic Nav Globals ---
+        let navItems = [];
+        // --- END: NEW Dynamic Nav Globals ---
 
         // --- START: MODIFIED Auto-Prompt State ---
         let autoPromptEnabledGames = new Set(); // Stores gameIds admin wants to auto-prompt
@@ -4755,7 +4767,11 @@
 
 
             // 1. Reset all link highlights
-            ['dashboard-link', 'scores-link', 'teams-link', 'admin-link', 'account-link', 'dashboard-link-mobile', 'scores-link-mobile', 'teams-link-mobile', 'admin-link-mobile', 'account-link-mobile'].forEach(id => { // NEW
+            ['dashboard-link', 'scores-link', 'teams-link', 'admin-link', 'account-link'].forEach(id => {
+                const link = document.getElementById(id);
+                if (link) link.classList.remove('active-link');
+            });
+            ['dashboard-link-mobile', 'scores-link-mobile', 'teams-link-mobile', 'admin-link-mobile', 'account-link-mobile'].forEach(id => { // NEW
                 const link = document.getElementById(id);
                 if (link) {
                     link.classList.remove('text-red-400', 'bg-gray-700');
@@ -4766,11 +4782,9 @@
             // 2. Highlight active links
             if (highlightedView) {
                 const desktopLink = document.getElementById(`${highlightedView}-link`);
+                if (desktopLink) desktopLink.classList.add('active-link');
+                
                 const mobileLink = document.getElementById(`${highlightedView}-link-mobile`);
-                if (desktopLink) {
-                    desktopLink.classList.remove('text-white');
-                    desktopLink.classList.add('text-red-400');
-                }
                 if (mobileLink) {
                     mobileLink.classList.remove('text-white');
                     mobileLink.classList.add('text-red-400', 'bg-gray-700');
@@ -4834,6 +4848,11 @@
                 accountLink.style.display = 'none'; // NEW
                 accountLinkMobile.style.display = 'none'; // NEW
             }
+
+            // --- START: NEW Force Nav Measurement ---
+            // Allow the DOM to render the displays, then measure the layout
+            setTimeout(updateNavLayout, 50);
+            // --- END: NEW Force Nav Measurement ---
         }
         
         /**
@@ -5491,6 +5510,13 @@
                     
                     if (item.id.includes('-mobile')) {
                         document.getElementById('mobile-menu').classList.add('hidden');
+                    } else {
+                        // Close the desktop "More" dropdown if an item inside it is clicked
+                        const moreMenu = document.getElementById('more-nav-menu');
+                        if (moreMenu) {
+                            moreMenu.classList.add('hidden');
+                            moreMenu.classList.remove('flex');
+                        }
                     }
                     switchView(item.view);
                 });
@@ -5586,7 +5612,92 @@
         
         setupCardSizeToggle(); // Run setup immediately
 
+        // --- START: NEW Dynamic Priority+ Navigation ---
+        function initDynamicNav() {
+            const primaryNav = document.getElementById('primary-nav-items');
+            if (primaryNav) {
+                navItems = Array.from(primaryNav.children);
+            }
+            
+            const moreBtn = document.getElementById('more-nav-btn');
+            const moreMenu = document.getElementById('more-nav-menu');
+            
+            if (moreBtn && moreMenu) {
+                moreBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    moreMenu.classList.toggle('hidden');
+                    moreMenu.classList.toggle('flex');
+                });
+                
+                document.addEventListener('click', (e) => {
+                    const moreWrapper = document.getElementById('more-nav-wrapper');
+                    if (moreWrapper && !moreWrapper.contains(e.target)) {
+                        moreMenu.classList.add('hidden');
+                        moreMenu.classList.remove('flex');
+                    }
+                });
+            }
+
+            const desktopNav = document.getElementById('desktop-nav');
+            if (desktopNav && window.ResizeObserver) {
+                const ro = new ResizeObserver(() => {
+                    requestAnimationFrame(updateNavLayout);
+                });
+                ro.observe(desktopNav);
+            } else {
+                window.addEventListener('resize', updateNavLayout);
+            }
+        }
+
+        function updateNavLayout() {
+            const desktopNav = document.getElementById('desktop-nav');
+            const primaryNav = document.getElementById('primary-nav-items');
+            const moreWrapper = document.getElementById('more-nav-wrapper');
+            const moreMenu = document.getElementById('more-nav-menu');
+            
+            if (!desktopNav || !primaryNav || !moreWrapper || !moreMenu) return;
+
+            // Always reset first to measure
+            navItems.forEach(item => {
+                if (item.parentElement !== primaryNav) {
+                    primaryNav.appendChild(item);
+                }
+            });
+            
+            moreWrapper.classList.add('hidden');
+            moreWrapper.classList.remove('flex');
+
+            if (window.innerWidth < 640) return; // Handled by mobile menu
+
+            // Measure available space in the flex container
+            const availableWidth = desktopNav.clientWidth - 40; // 40px buffer for the 3-dots button
+            let currentWidth = 0;
+            let overflowIndex = -1;
+
+            for (let i = 0; i < navItems.length; i++) {
+                const item = navItems[i];
+                if (item.style.display !== 'none') {
+                    currentWidth += item.offsetWidth + 16; // 16px gap (space-x-4)
+                    if (currentWidth > availableWidth) {
+                        overflowIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (overflowIndex !== -1) {
+                moreWrapper.classList.remove('hidden');
+                moreWrapper.classList.add('flex');
+                for (let i = overflowIndex; i < navItems.length; i++) {
+                    const item = navItems[i];
+                    moreMenu.appendChild(item);
+                }
+            }
+        }
+        // --- END: NEW Dynamic Priority+ Navigation ---
+
         // Initialize the view and start fetching data when the window loads
+        initDynamicNav(); // Set up dynamic nav listeners immediately
         window.onload = initFirebaseAndLoadData;
     </script>
 </body>
